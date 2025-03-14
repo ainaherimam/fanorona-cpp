@@ -1,7 +1,8 @@
 # Fanorona on C++20 with MCTS
 
  A project that implements the Monte Carlo Tree Search (MCTS) algorithm for the traditional board game of [Fanorona] on C++20(https://en.wikipedia.org/wiki/Fanorona).
- ![img1](./images/1.jpg)
+
+ ![img1](./images/fanorona.png)
 
 ---
 
