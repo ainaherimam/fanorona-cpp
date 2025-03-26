@@ -17,30 +17,53 @@ Board::Board(int size)
     if (size < 2) {
         throw std::invalid_argument("Board size cannot be less than 2.");
     }
-
-    // Initialize the board with the specific pattern
-    for (size_t row = 0; row < static_cast<size_t>(size); ++row) {
-        for (size_t col = 0; col < static_cast<size_t>(size); ++col) {
-            if (row <= 1) {
-                board[row][col] = Cell_state::X;
-            }
-            else if (row >= 3) {
-                board[row][col] = Cell_state::O;
+    if (size == 5) {
+        // Initialize the board with the specific pattern
+        for (size_t row = 0; row < 5; ++row) {
+            for (size_t col = 0; col < static_cast<size_t>(size); ++col) {
+                if (row <= 1) {
+                    board[row][col] = Cell_state::X;
+                }
+                else if (row >= 3) {
+                    board[row][col] = Cell_state::O;
+                }
             }
         }
+        board[2][0] = Cell_state::O;
+        board[2][1] = Cell_state::X;
+        board[2][2] = Cell_state::Empty;
+        board[2][3] = Cell_state::O;
+        board[2][4] = Cell_state::X;
     }
-    board[2][0] = Cell_state::O;
-    board[2][1] = Cell_state::X;
-    board[2][2] = Cell_state::Empty;
-    board[2][3] = Cell_state::O;
-    board[2][4] = Cell_state::X;
+    else if (size == 9) {
+        for (size_t row = 0; row < 5; ++row) {
+            for (size_t col = 0; col < static_cast<size_t>(size); ++col) {
+                if (row <= 1) {
+                    board[row][col] = Cell_state::X;
+                }
+                else if (row >= 3) {
+                    board[row][col] = Cell_state::O;
+                }
+            }
+        }
+        board[2][0] = Cell_state::O;
+        board[2][1] = Cell_state::X;
+        board[2][2] = Cell_state::O;
+        board[2][3] = Cell_state::X;
+        board[2][4] = Cell_state::Empty;
+        board[2][5] = Cell_state::O;
+        board[2][6] = Cell_state::X;
+        board[2][7] = Cell_state::O;
+        board[2][8] = Cell_state::X;
+    }
+
 }
 
 
 int Board::get_board_size() const { return board_size; }
 
 bool Board::is_within_bounds(int move_x, int move_y) const {
-  return move_x >= 0  && move_x < board_size && move_y >= 0 && move_y < board_size;
+  return move_x >= 0  && move_x < 5 && move_y >= 0 && move_y < board_size;
 }
 
 bool Board::is_in_vector(int x, int y, const std::vector<std::array<int, 2>>& vector) const {
@@ -128,7 +151,13 @@ std::vector<std::array<int, 4>> Board::get_valid_moves(Cell_state player) const 
         valid_positions.emplace_back(path.back());
     }
     else {
-        valid_positions = coordinates;
+        if (get_board_size() == 5) {
+            valid_positions = coordinates;
+        }
+        else {
+            valid_positions = coordinates_9;
+        }
+        
     }
 
     for (const auto&[x,y] : valid_positions) {
@@ -146,7 +175,7 @@ std::vector<std::array<int, 4>> Board::get_valid_moves(Cell_state player) const 
             int dest_x = x + offset_x[dir], dest_y = y + offset_y[dir];
 
             if (!is_within_bounds(dest_x, dest_y) ||
-                is_in_vector(dest_x, dest_y, restricted_move) ||
+               (std::array<int, 2> {dest_x, dest_y} == restricted_move) ||
                 is_in_vector(dest_x, dest_y, path) ||
                 board[dest_x][dest_y] != Cell_state::Empty)
                 continue;
@@ -154,20 +183,24 @@ std::vector<std::array<int, 4>> Board::get_valid_moves(Cell_state player) const 
             int tarf_x = dest_x + offset_x[dir], tarf_y = dest_y + offset_y[dir];
             int tarb_x = dest_x - 2 * offset_x[dir], tarb_y = dest_y - 2 * offset_y[dir];
 
-            int move_type = -1; // Default move type
+            bool took = false;
 
             if (is_within_bounds(tarf_x, tarf_y) &&
                 board[tarf_x][tarf_y] != Cell_state::Empty &&
                 board[tarf_x][tarf_y] != player) {
-                move_type = 2; // Forward capture
+                valid_moves.emplace_back(std::array<int, 4>{x, y, dir, 2});
+                took = true;
             }
-            else if (is_within_bounds(tarb_x, tarb_y) &&
+            if (is_within_bounds(tarb_x, tarb_y) &&
                 board[tarb_x][tarb_y] != Cell_state::Empty &&
                 board[tarb_x][tarb_y] != player) {
-                move_type = 1; // Backward capture
+                valid_moves.emplace_back(std::array<int, 4>{x, y, dir, 1});
+                took = true;
             }
-
-            valid_moves.emplace_back(std::array<int, 4>{x, y, dir, move_type});
+            if (!took) {
+                valid_moves.emplace_back(std::array<int, 4>{x, y, dir, -1});
+            }
+            
         }
     }
 
@@ -197,13 +230,13 @@ void Board::make_move(int move_x, int move_y, int dir, int tar, Cell_state playe
         if (!path.empty()) {
             int restr_x = move_x + 2 * offset_x[dir];
             int restr_y = move_y + 2 * offset_y[dir];
-            Board::restricted_move.emplace_back(std::array<int, 2>{restr_x, restr_y});
-            Board::path.emplace_back(std::array<int, 2>{dest_x, dest_y});
+            restricted_move =  {restr_x, restr_y};
+            path.emplace_back(std::array<int, 2>{dest_x, dest_y});
 
         }
         else {
-            Board::path.emplace_back(std::array<int, 2>{move_x, move_y});
-            Board::path.emplace_back(std::array<int, 2>{dest_x, dest_y});
+            path.emplace_back(std::array<int, 2>{move_x, move_y});
+            path.emplace_back(std::array<int, 2>{dest_x, dest_y});
         }
         take(move_x, move_y, dir, tar, player);
     }
@@ -253,10 +286,10 @@ Cell_state Board::check_winner() const {
     }
 
     // Return the missing color type
-    if (!hasO) {
+    if (!hasX) {
         return Cell_state::O;
     }
-    else if (!hasX) {
+    else if (!hasO) {
         return Cell_state::X;
     }
 
@@ -267,7 +300,7 @@ void Board::display_board(std::ostream& os = std::cout) const {
     os << "\n";
 
     // Loop through each cell in the board.
-    for (size_t row = 0; row < static_cast<std::size_t>(board_size); ++row) {
+    for (size_t row = 0; row < 5; ++row) {
         for (size_t col = 0; col < static_cast<std::size_t>(board_size); ++col) {
             // Print the state of the cell.
             os << board[row][col] << " ";

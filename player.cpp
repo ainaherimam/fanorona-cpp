@@ -3,6 +3,7 @@
 #include <chrono>
 #include <iostream>
 
+#include "mcts_agent.h"
 
 std::array<int, 4> Human_player::choose_move(const Board& board,
                                               Cell_state player) {
@@ -10,6 +11,8 @@ std::array<int, 4> Human_player::choose_move(const Board& board,
   bool valid_choice = false;
   std::vector<std::array<int, 4>> all_moves = board.get_valid_moves(player);
   board.print_valid_moves(all_moves);
+
+
 
  
   while (!valid_choice) {
@@ -35,3 +38,21 @@ std::array<int, 4> Human_player::choose_move(const Board& board,
 
   return { -1, -1, -1, -1 };  // should never reach this
 }
+
+
+Mcts_player::Mcts_player(double exploration_factor,
+                         std::chrono::milliseconds max_decision_time,
+                         bool is_verbose)
+    : exploration_factor(exploration_factor),
+      max_decision_time(max_decision_time),
+      is_verbose(is_verbose) {}
+
+std::array<int, 4> Mcts_player::choose_move(const Board& board,
+                                             Cell_state player) {
+
+  Mcts_agent agent(exploration_factor, max_decision_time, is_verbose);
+
+  return agent.choose_move(board, player);
+}
+
+bool Mcts_player::get_is_verbose() const { return is_verbose; }

@@ -15,4 +15,6 @@ add_executable(MCTS-Fanorona
     console_interface.cpp
     game.cpp
     player.cpp
+    mcts_agent.cpp
+    logger.cpp
 )

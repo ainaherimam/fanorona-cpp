@@ -4,6 +4,7 @@
 #include <climits>
 
 #include "board.h"
+#include "mcts_agent.h"
 
 
 bool is_integer(const std::string& s) {
@@ -95,15 +96,82 @@ double get_parameter_within_bounds<double>(const std::string& prompt,
   return value;
 }
 
+std::unique_ptr<Mcts_player> create_mcts_agent(
+    const std::string& agent_prompt) {
+    std::cout << "\nInitializing " << agent_prompt << ":\n";
+
+    int max_decision_time_ms = get_parameter_within_bounds(
+        "Max decision time in milliseconds(at least 100) : ", 100, INT_MAX);
+
+    double exploration_constant = 1.41;
+
+    exploration_constant = get_parameter_within_bounds(
+        "Enter exploration constant (between 0.1 and 2): ", 0.1, 2.0);
+
+    bool is_verbose = false;
+
+    is_verbose = (get_yes_or_no_response(
+            "Would you like to enable verbose mode? (y/n): ") == 'y');
+
+    return std::make_unique<Mcts_player>(
+        exploration_constant, std::chrono::milliseconds(max_decision_time_ms),
+        is_verbose);
+}
+
+void countdown(int seconds) {
+    while (seconds > 0) {
+        std::cout << "The agent will start thinking loudly in " << seconds
+            << " ...\n";
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+        --seconds;
+    }
+}
+
+void start_match_against_robot() {
+    int human_player_number = get_parameter_within_bounds(
+        "Enter '1' if you want to be Player 1 (X) or '2' if you "
+        "want to be "
+        "Player 2 (O): ",
+        1, 2);
+
+    int board_size = 9;
+
+    auto mcts_agent = create_mcts_agent("agent");
+    auto human_player = std::make_unique<Human_player>();
+
+    if (human_player_number == 1) {
+        Game game(board_size, std::move(human_player), std::move(mcts_agent));
+        game.play();
+    }
+    else {
+        if (mcts_agent->get_is_verbose()) {
+            countdown(3);
+        }
+        Game game(board_size, std::move(mcts_agent), std::move(human_player));
+        game.play();
+    }
+}
+
+void start_robot_arena() {
+
+    int board_size = 9;
+
+    auto mcts_agent_1 = create_mcts_agent("first agent");
+    auto mcts_agent_2 = create_mcts_agent("second agent");
+
+    Game game(board_size, std::move(mcts_agent_1), std::move(mcts_agent_2));
+    game.play();
+}
 
 
 void start_human_arena() {
-  int board_size = 5;
+  int board_size = 9;
   auto human_player_1 = std::make_unique<Human_player>();
   auto human_player_2 = std::make_unique<Human_player>();
   Game game(board_size, std::move(human_player_1), std::move(human_player_2));
   game.play();
 }
+
 
 void run_console_interface() {
   print_welcome_ascii_art();
@@ -115,16 +183,24 @@ void run_console_interface() {
       int option = 0;
       std::cout << "\nMENU:\n"
                 << "[1] Human player vs Human player\n"
-                << "[2] (H)Exit\n";
+                << "[2] AI player vs AI player\n"
+                << "[3] Human player vs AI player\n"
+                << "[4] (H)Exit\n";
 
-      option = get_parameter_within_bounds("Option: ", 1, 2);
+      option = get_parameter_within_bounds("Option: ", 1, 4);
       std::cout << "\n";
 
       switch (option) {
         case 1:
            start_human_arena();
-          break;
+           break;
         case 2:
+            start_robot_arena();
+            break;
+        case 3:
+            start_match_against_robot();
+          break;
+        case 4:
           is_running = false;
           break;
         default:
@@ -139,10 +215,6 @@ void run_console_interface() {
     }
   }
   print_exit_ascii_art();
-}
-
-void test() {
-    
 }
 
 void print_welcome_ascii_art() {

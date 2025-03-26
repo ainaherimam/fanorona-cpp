@@ -48,7 +48,7 @@ class Board {
   */
   void clear_state() {
       path.clear();
-      restricted_move.clear();
+      restricted_move = {-1,-1};
   }
   /*
    @brief Getter for the size of the board.
@@ -169,7 +169,7 @@ class Board {
   /*
    @brief A vector of restricted moves that cannot be performed on the current board.  
   */
-  std::vector<std::array<int, 2>> restricted_move; // Vector of array (int, 2)
+  std::array<int, 2> restricted_move = { -1,-1 }; // array (int, 2)
 
   /*
    @brief A vector containing all moves previously done by the current player
@@ -187,6 +187,18 @@ class Board {
       return coo;
       }();
 
+  /*
+   @brief A vector containing possible positions on a 5x9 board.
+  */
+  std::vector<std::array<int, 2>> coordinates_9 = [] {
+      std::vector<std::array<int, 2>> coo;
+      for (int x = 0; x <= 8; ++x)
+          for (int y = 0; y <= 8; ++y)
+              coo.push_back({ x, y });
+      return coo;
+      }();
+
+ 
 
 };
 

@@ -2,7 +2,7 @@ CXX = g++
 CXXFLAGS = -Wall -Wextra -std=c++20 -Wno-unused-parameter
 
 # List of source files
-SRCS = main.cpp board.cpp cell_state.cpp console_interface.cpp game.cpp player.cpp
+SRCS = main.cpp board.cpp cell_state.cpp console_interface.cpp game.cpp player.cpp mcts_agent.cpp logger.cpp
 # List of object files
 OBJS = $(SRCS:.cpp=.o)
 

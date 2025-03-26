@@ -29,7 +29,10 @@ class Game {
    */
   Game(int board_size, std::unique_ptr<Player> player_1,
        std::unique_ptr<Player> player_2);
-
+  /*
+   @brief Give the correct string output for a move represented by an array of integers.
+  */
+  std::string print_move(std::array<int, 4> moves);
   /*
    @brief Starts and manages the game.
    
