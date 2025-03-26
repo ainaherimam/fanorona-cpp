@@ -44,13 +44,13 @@ mkdir build && cd build
 # Configure and build
 cmake -DCMAKE_CXX_STANDARD=20 ..
 cmake --build .
-
+```
 
 ## 🛠️ To do
 -  Optimize the code for more simulations
----
 
----
+
+
 
 ## 🌟 Acknowledgments
 - Inspired by the board game [Fanorona](https://en.wikipedia.org/wiki/Fanorona)
