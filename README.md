@@ -23,7 +23,7 @@ Fanorona is a centuries-old strategy board game originating from Madagascar. It 
 - **Fanorona Game Logic**: The game board is represented programmatically, supporting all valid moves and captures.
 - **MCTS Algorithm**: To calculate optimal moves.
 - **Interactive Gameplay**: Play against the AI (Still in dev)
-
+- **Learn from SelfPlay**: AlphaZero style implementation (Still in dev)
 ---
 
 ## 🛠️ Getting Started
@@ -42,12 +42,12 @@ git clone https://github.com/ainaherimam/fanorona-cpp.git && cd fanorona-cpp
 mkdir build && cd build
 
 # Configure and build
-cmake -DCMAKE_CXX_STANDARD=20 ..
-cmake --build .
+cmake -DCMAKE_PREFIX_PATH=${LIBTORCH_PATH} ..
+make -j$(nproc)
 ```
 
 ## 🛠️ To do
--  Optimize the code for more simulations
+-  Outer loop of Self-play
 
 
 
