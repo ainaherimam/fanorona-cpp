@@ -8,6 +8,7 @@
 #include "player.h"
 #include "nn_model.h"
 
+
 /*
  @class Game
  @brief Represents a Fanorona game.
@@ -30,7 +31,7 @@ class Game {
    */
   Game(int board_size, std::unique_ptr<Player> player_1,
        std::unique_ptr<Player> player_2,
-       GameDataset& dataset);
+       GameDataset& dataset, bool verbose = false);
   /*
    @brief Give the correct string output for a move represented by an array of integers.
   */
@@ -51,18 +52,19 @@ class Game {
   std::unique_ptr<Player>
       players[2];           
   int current_player_index;
-  std::vector<torch::Tensor> result_logits;
-  std::vector<torch::Tensor> result_states;
-  std::vector<torch::Tensor> result_z;\
-  std::vector<torch::Tensor> result_mask;
+  std::vector<torch::Tensor> result_z;
 
   GameDataset& dataset_;
+
+  bool verbose = true;
   /*
    @brief Switches the current player.
    
    This function switches the turn to the other player.
    */
   void switch_player();
+  void random_move(int random_move_number);
+
 };
 
 #endif

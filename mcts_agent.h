@@ -89,8 +89,16 @@ class Mcts_agent {
    */
 
   std::pair<std::array<int, 4>,torch::Tensor> choose_move(const Board& board, Cell_state player);
+  
+  
+  /*
+  @brief Execute a random move n times on the board. Updates the board state based on the specified move.
 
-  std::array<int, 4> choose_move_randomly(const Board& board, Cell_state player, int times);
+  @param random_move_number: Number of random move to make.
+  @param player: The current player.
+  */
+  void random_move(Board& board, Cell_state player, int random_move_number);
+
 
  private:
   std::shared_ptr<NeuralN> agent;

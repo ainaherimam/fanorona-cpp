@@ -7,7 +7,6 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
-
 #include "iterator"
 
 
@@ -88,6 +87,7 @@ void remove_on_vector(std::vector<std::array<int, 4>>& valid_moves, int threshol
         valid_moves.end()
     );
 }
+
 void Board::print_valid_moves(std::vector<std::array<int, 4>> moves) const {
     int index = 1;
     for (const auto& move : moves) {
@@ -433,53 +433,6 @@ void Board::display_board(std::ostream& os) const {
         }
     }
 }
-
-// void Board::display_board(std::ostream& os) const {
-//     const int ROWS = 5;
-//     const int COLS = board_size;
-
-//     // ---- COLUMN LABELS ----
-//     os << "    ";
-//     for (int c = 0; c < COLS; ++c)
-//         os << static_cast<char>('A' + c) << "   ";
-//     os << "\n";
-
-//     for (int r = 0; r < ROWS; ++r) {
-//         int rr = ROWS - 1 - r;  // convert to 5 → 1
-
-//         // ---- NODE LINE ----
-//         os << (rr + 1) << "  ";
-//         for (int c = 0; c < COLS; ++c) {
-//             os << board[rr][c];
-//             if (c < COLS - 1) os << "─";
-//         }
-//         os << "\n";
-
-//         // ---- CONNECTOR LINE ----
-//         if (rr > 0) {
-//         os << "   ";
-
-//         bool row_even = (rr % 2 == 0);
-
-//         for (int c = 0; c < COLS - 1; ++c) {
-//             bool col_even = (c % 2 == 0);
-
-//             std::string slash;
-//             if (row_even) {
-//                 // even rows start with ╲
-//                 slash = col_even ? "╲" : "╱";
-//             } else {
-//                 // odd rows start with ╱
-//                 slash = col_even ? "╱" : "╲";
-//             }
-
-//             os << "│" << slash;
-//         }
-//         os << "│\n";
-// }
-//     }
-// }
-
 
 
 std::ostream& operator<<(std::ostream& os, const Board& board) {

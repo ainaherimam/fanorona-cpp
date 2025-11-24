@@ -168,18 +168,47 @@ void start_robot_arena() {
 
 
 void generate_data() {
-    torch::manual_seed(0);
-    torch::Device device(torch::kCUDA);
-    if (!torch::cuda::is_available()) device = torch::kCPU;
-    GameDataset dataset(20);
-    auto mcts_agent_1  = std::make_unique<Mcts_player>(1, 20, false);
-    auto mcts_agent_2  = std::make_unique<Mcts_player>(1, 20, false);
+  torch::manual_seed(0);
+  torch::Device device(torch::kCUDA);
+  if (!torch::cuda::is_available()) device = torch::kCPU;
+  
+  int data_number = 512;
+  GameDataset dataset(data_number);
 
-    Game game(9, std::move(mcts_agent_1), std::move(mcts_agent_2), dataset);
-    game.play();
+  AlphaZeroNetWithMask model;
 
-    AlphaZeroNetWithMask model;
-    train(model, dataset, 16, 5, 1e-3, device);
+  std::cout << "🌱 Starting self-play...\n";
+
+  // Keep generating games until at least 2000 samples exist
+  int cycles = 20;
+  int game_counter = 0;
+  for (int iter = 1; iter <= cycles; ++iter) {
+
+      std::cout << "\n=============================\n";
+      std::cout << "🔁 TRAINING CYCLE " << iter << "\n";
+      std::cout << "=============================\n\n";
+      std::cout << "🌱 Collecting Data...\n";
+      // --- 1. SELF-PLAY PHASE ---
+      while (dataset.current_size < data_number) {
+          Game game(9, std::make_unique<Mcts_player>(1.5, 200, false), std::make_unique<Mcts_player>(1.5, 200, false), dataset, false);
+          game.play();
+          game_counter++;
+          std::cout <<game_counter<<" Games completed - Stored positions: " 
+                    << dataset.current_size << "/512\n";
+          
+      }
+
+      std::cout << "✅ Replay buffer ready (" 
+                << dataset.current_size << " samples)\n";
+
+      // --- 2. TRAINING PHASE ---
+      std::cout << "🎯 Training model...\n";
+      train(model, dataset, 64, 5, 1e-3, device);
+
+      // --- 3. OPTIONAL: Clear buffer or keep it learning ---
+      // dataset.current_size stays and will be overwritten
+      // so new positions will replace old ones (good!)
+  }
 }
 
 void train() {
@@ -232,6 +261,7 @@ void run_console_interface() {
                 << "[1] Human player vs Human player\n"
                 << "[2] AI player vs AI player\n"
                 << "[3] Human player vs AI player\n"
+                << "[5] Launch Self-Play\n"
                 << "[4] (H)Exit\n";
 
       option = get_parameter_within_bounds("Option: ", 1, 6);

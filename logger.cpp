@@ -24,9 +24,6 @@ void Logger::log_mcts_start(Cell_state player) {
     message << "\n-------------MCTS VERBOSE START - " << player
             << " to move-------------\n";
     log(message.str());
-  } else {
-    message << "Thinking silently...";
-    log(message.str(), true);
   }
 }
 

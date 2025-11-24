@@ -13,6 +13,7 @@
 struct GameDataset : torch::data::datasets::Dataset<GameDataset> {
     size_t max_size;
     size_t next_index = 0;
+    size_t current_size = 0;   
     std::vector<torch::Tensor> boards, pi_targets, z_targets, legal_mask;
 
     GameDataset(size_t max_size_) : max_size(max_size_) {
@@ -29,6 +30,8 @@ struct GameDataset : torch::data::datasets::Dataset<GameDataset> {
         legal_mask[next_index] = mask;
 
         next_index = (next_index + 1) % max_size;  // overwrite oldest data
+        if (current_size < max_size)
+            current_size++;
     }
 
     torch::data::Example<> get(size_t) override {
@@ -39,6 +42,46 @@ struct GameDataset : torch::data::datasets::Dataset<GameDataset> {
     }
 
     torch::optional<size_t> size() const override { return max_size; }
+
+    // void update_last_z(const std::vector<float>& new_z_values) {
+    //     size_t count = new_z_values.size();
+    //     for (size_t i = 0; i < count; ++i) {
+    //         // calculate the correct index in the circular buffer
+    //         size_t idx = (next_index + max_size - count + i) % max_size;
+    //         z_targets[idx] = torch::full({1}, new_z_values[i], torch::kFloat32);
+    //     }
+    // }
+
+    void update_last_z(const std::vector<torch::Tensor>& new_z_values, Cell_state winner) {
+    size_t count = new_z_values.size();
+    // Compute z values for X and O based on winner
+    float z_val_x = (winner == Cell_state::X) ? 1.0f : (winner == Cell_state::O ? -1.0f : 0.0f);
+    float z_val_o = (winner == Cell_state::O) ? 1.0f : (winner == Cell_state::X ? -1.0f : 0.0f);
+
+    for (size_t i = 0; i < count; ++i) {
+        // Circular buffer index
+        size_t idx = (next_index + max_size - count + i) % max_size;
+
+        // Old value
+        float old_val = z_targets[idx].item<float>();
+
+        // Decide updated value based on previous value
+        float updated_val = (old_val == 0.0f) ? z_val_x : z_val_o; // or just new_z_values[i] if you already precomputed
+
+        // Update z
+        z_targets[idx] =  torch::tensor(updated_val, torch::dtype(torch::kFloat32));
+
+        // // Log everything
+        // std::cout << "Index: " << idx
+        //           << " | Old z: " << old_val
+        //           << " | Winner: " << ((winner==Cell_state::X)?"X":(winner==Cell_state::O)?"O":"Draw")
+        //           << " | z_val_X: " << z_val_x
+        //           << " | z_val_O: " << z_val_o
+        //           << " | Updated z: " << updated_val
+        //           << std::endl;
+    }
+}
+
 };
 
 

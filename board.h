@@ -172,7 +172,9 @@ class Board {
   friend std::ostream& operator<<(std::ostream& os, const Board& board);
 
  private:
-  /*
+ 
+ 
+ /*
    @brief The size of the board.
    */
   int board_size;
@@ -193,6 +195,7 @@ class Board {
   */
   std::vector<std::vector<Cell_state>> empty_board;
   std::vector<std::vector<std::vector<Cell_state>>> history;
+  
 
 
   /*

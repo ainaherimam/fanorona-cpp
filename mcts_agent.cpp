@@ -80,29 +80,35 @@ std::pair<std::array<int, 4>,torch::Tensor> Mcts_agent::choose_move(const Board&
 
 }
 
-std::array<int, 4> Mcts_agent::choose_move_randomly(const Board& board,
-                                            Cell_state player, int times) {
-  logger->log_mcts_start(player);
-  // Create a new  root node and expand it
-  std::array<int, 4> arr = { -1, -1, -1, -1 };
-  root = std::make_shared<Node>(player, arr, 0.0, 0.0, nullptr);
-  initiate_and_run_nn(root, board);
+void Mcts_agent::random_move(Board& board, Cell_state player, int random_move_number) {
+    
+    int move_counter = 0; 
 
-  int mcts_iteration_counter =0;
-  // Run MCTS until the timer runs out
-  perform_mcts_iterations(number_iteration, mcts_iteration_counter, board);
-  logger->log_timer_ran_out(mcts_iteration_counter);
+    while (move_counter < random_move_number) {
 
-  // Select the child with the highest win ratio as the best move:
-  std::shared_ptr<Node> best_child = select_best_child(root);
-  
-  logger->log_best_child_chosen(
-      mcts_iteration_counter, best_child->move,
-      static_cast<double>(best_child->acc_value) / best_child->visit_count);
-  logger->log_mcts_end();
-  return best_child->move; 
+        std::vector<std::array<int, 4>> valid_moves = board.get_valid_moves(player);
+        if (valid_moves.empty()) {
+            break; 
+        }
 
+        std::uniform_int_distribution<> dist(0, static_cast<int>(valid_moves.size() - 1));
+        std::array<int, 4> random_move = valid_moves[dist(random_generator)];
+
+        board.make_move(random_move[0], random_move[1], random_move[2], random_move[3], player);
+        move_counter++;
+
+        if (board.check_winner() != Cell_state::Empty) {
+            break;
+        }
+
+        if (random_move[3] < 1) {
+            player = (player == Cell_state::X ? Cell_state::O : Cell_state::X);
+            board.clear_state();
+        }
+
+    }
 }
+
 
 float Mcts_agent::initiate_and_run_nn(const std::shared_ptr<Node>& node,
                              const Board& board) {

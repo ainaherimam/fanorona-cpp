@@ -5,41 +5,57 @@
 #include "nn_model.h"
 
 #include <iostream>
+#include <random>
+
+
+static std::mt19937 random_generator(std::random_device{}());
+
 
 Game::Game(int board_size, std::unique_ptr<Player> player1,
-           std::unique_ptr<Player> player_2, GameDataset& dataset)
-    : board(board_size), current_player_index(0), dataset_(dataset) {
+           std::unique_ptr<Player> player_2, GameDataset& dataset, bool verbose)
+    : board(board_size), current_player_index(0), dataset_(dataset), verbose(verbose) {
   players[0] = std::move(player1);
   players[1] = std::move(player_2);
 }
 
 Cell_state Game::play() {
 
-    // auto start_time = std::chrono::steady_clock::now();
-    // const auto max_duration = std::chrono::seconds(5000);
+    int move_counter = 0;
+    int max_move = 70;
+
+    Cell_state current_player =
+            current_player_index == 0 ? Cell_state::X : Cell_state::O;
+
+    //Make 10 random move first
+    random_move(30);
+
 
     while (board.check_winner() == Cell_state::Empty) {
 
 
-        // auto current_time = std::chrono::steady_clock::now();
-        // if (current_time - start_time >= max_duration) {
-        //     std::cout << "\nTime limit reached! Ending the game." << std::endl;
-        //     break;
-        // }
+        if (move_counter>max_move){
+            break;
+        }
 
         board.get_board_size();
         Cell_state current_player =
             current_player_index == 0 ? Cell_state::X : Cell_state::O;
-
-        std::cout << "\nPlayer " << current_player_index + 1 << "'s turn:" << std::endl;
-        board.display_board(std::cout);
+        if (verbose)
+            std::cout << "\nPlayer " << current_player_index + 1 << "'s turn:" << std::endl;
+            // board.display_board(std::cout);
         auto [chosen_move, logits] = players[current_player_index]->choose_move(board, current_player);
         // Skip if random move or human move
         if (logits.numel() > 1000) {
             auto board_tensor = board.to_tensor(current_player);
             auto pi_tensor = logits;
             auto mask_tensor = board.get_legal_mask(current_player);  
-            auto z_tensor = torch::full({1}, 0.0, torch::kFloat32); // temporary, will update after game
+            
+            float z_value;
+            if (current_player == Cell_state::X) {z_value = 0.0;} 
+            else if (current_player == Cell_state::O) {z_value = 1.0;}
+
+            auto z_tensor = torch::tensor(z_value, torch::dtype(torch::kFloat32));
+            result_z.push_back(z_tensor);
 
             dataset_.add_position(board_tensor, pi_tensor, z_tensor, mask_tensor);
         }
@@ -47,41 +63,23 @@ Cell_state Game::play() {
         int chosen_y = chosen_move[1];
         int chosen_dir = chosen_move[2];
         int chosen_tar = chosen_move[3];
-        std::cout << "\nPlayer " << current_player_index + 1 << " chose move: " << print_move(chosen_move) << std::endl;
+        if (verbose)
+            std::cout << "\nPlayer " << current_player_index + 1 << " chose move: " << print_move(chosen_move) << std::endl;
         board.make_move(chosen_x, chosen_y, chosen_dir, chosen_tar, current_player);
         if (chosen_move[3] < 1) {
             switch_player();
             board.clear_state();
         }
+        
+        move_counter ++;
     }
-    
-    board.display_board(std::cout);
     Cell_state winner = board.check_winner();
-    std::cout << "Player " << winner << " wins!" << std::endl;
 
-    // if (!result_z.empty()) {
-    //     for (auto& z_tensor : result_z) {
-    //         float& val = z_tensor.accessor<float,1>()[0]; // get the single float
-
-    //         if (winner == Cell_state::X) {
-    //             // X wins: 0 → 1, 1 → -1
-    //             val = (val == 0.0f) ? 1.0f : -1.0f;
-    //         }
-    //         else if (winner == Cell_state::O) {
-    //             // O wins: 0 → -1, 1 → 1
-    //             val = (val == 0.0f) ? -1.0f : 1.0f;
-    //         }
-    //         else {
-    //             // Draw: all 0
-    //             val = 0.0f;
-    //         }
-    //     }
-    // }
-    // int idx = 3;
-    // std::cout << "Logits at index " << idx << ":\n" << result_logits[idx] << std::endl;
-    // std::cout << "States at index " << idx << ":\n" << result_states[idx] << std::endl;
-    // std::cout << "Z at index " << idx << ":\n" << result_z[idx] << std::endl;
-
+    // board.display_board(std::cout);
+    // std::cout << "Player " << verbose << " wins!" << std::endl;
+    
+    dataset_.update_last_z(result_z, winner);
+    
     return winner;
 }
 std::string Game::print_move(std::array<int, 4> move) {
@@ -125,3 +123,43 @@ void Game::switch_player() {
     current_player_index = 1 - current_player_index;
 
 }
+
+
+void Game::random_move(int random_move_number) {
+
+    int move_counter = 0;
+    Cell_state player = (current_player_index == 0 
+                         ? Cell_state::X 
+                         : Cell_state::O);
+
+    while (move_counter < random_move_number) {
+
+
+        std::vector<std::array<int, 4>> valid_moves = board.get_valid_moves(player);
+        if (valid_moves.empty()) {
+            break;
+        }
+
+        std::uniform_int_distribution<> dist(0, static_cast<int>(valid_moves.size() - 1));
+        const std::array<int, 4>& random_move = valid_moves[dist(random_generator)];
+
+        board.make_move(random_move[0], random_move[1],
+                        random_move[2], random_move[3], player);
+
+        move_counter++;
+
+        if (board.check_winner() != Cell_state::Empty) {
+            break;
+        }
+
+        if (random_move[3] < 1) {
+            switch_player();
+            player = (current_player_index == 0 
+                       ? Cell_state::X 
+                       : Cell_state::O);
+
+            board.clear_state();
+        }
+    }
+}
+
