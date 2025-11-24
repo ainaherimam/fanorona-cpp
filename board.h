@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "cell_state.h"
+#include <torch/torch.h>
 
 /*
  Fanorona is a centuries-old strategy board game originating from Madagascar. 
@@ -125,6 +126,35 @@ class Board {
   Cell_state check_winner() const;
 
   /*
+  @brief Outputs the current state of the board to an output stream.
+  @param os: The output stream to which the board state is to be printed.
+  Defaults to std::cout if not provided. ???????????????????
+  */
+  torch::Tensor valid_moves_map(Cell_state player) const;
+
+
+  /*
+  @brief Outputs the current state of the board to an output stream.
+  @param os: The output stream to which the board state is to be printed.
+  Defaults to std::cout if not provided.?????????????????????
+  */
+  torch::Tensor to_tensor(Cell_state player) const;
+  
+  
+  /*
+  @brief Outputs the current state of the board to an output stream.
+  @param os: The output stream to which the board state is to be printed.
+  Defaults to std::cout if not provided.?????????????????????
+  */
+  void add_history();
+
+  /*
+  @brief Outputs the current state of the board to an output stream.
+  @param os: The output stream to which the board state is to be printed.
+  Defaults to std::cout if not provided.?????????????????????
+  */
+  torch::Tensor get_legal_mask(Cell_state player) const;
+  /*
    @brief Outputs the current state of the board to an output stream.
    @param os: The output stream to which the board state is to be printed.
    Defaults to std::cout if not provided.
@@ -147,12 +177,23 @@ class Board {
    */
   int board_size;
 
+
   /*
    @brief A 2D vector representing the game board. Each Cell_state
    signifies the state of a cell in the board - it can be either empty,
    or occupied by one of the two players.
   */
   std::vector<std::vector<Cell_state>> board;
+
+
+  /*
+   @brief A 2D vector representing the game board. Each Cell_state
+   signifies the state of a cell in the board - it can be either empty,
+   or occupied by one of the two players.
+  */
+  std::vector<std::vector<Cell_state>> empty_board;
+  std::vector<std::vector<std::vector<Cell_state>>> history;
+
 
   /*
    @brief An array storing the x offsets for the nine possible directions

@@ -6,6 +6,7 @@
 #include "board.h"
 #include "cell_state.h"
 #include "player.h"
+#include "nn_model.h"
 
 /*
  @class Game
@@ -28,7 +29,8 @@ class Game {
    @param player2  pointer to the second player.
    */
   Game(int board_size, std::unique_ptr<Player> player_1,
-       std::unique_ptr<Player> player_2);
+       std::unique_ptr<Player> player_2,
+       GameDataset& dataset);
   /*
    @brief Give the correct string output for a move represented by an array of integers.
   */
@@ -42,14 +44,19 @@ class Game {
    Once a player wins, it displays the final state of the board and the
    winner.
    */
-  void play();
+  Cell_state play();
 
  private:
   Board board; 
   std::unique_ptr<Player>
       players[2];           
-  int current_player_index;  
+  int current_player_index;
+  std::vector<torch::Tensor> result_logits;
+  std::vector<torch::Tensor> result_states;
+  std::vector<torch::Tensor> result_z;\
+  std::vector<torch::Tensor> result_mask;
 
+  GameDataset& dataset_;
   /*
    @brief Switches the current player.
    

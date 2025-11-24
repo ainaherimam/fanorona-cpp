@@ -99,7 +99,7 @@ class Logger {
    @param winning_player The player who won the game.
    @param board The final state of the game board.
    */
-  void log_simulation_end(Cell_state winning_player, const Board& board);
+  void log_simulation_end(float value);
 
   /*
    @brief Logs the result of backpropagating a simulation result through the
@@ -111,7 +111,7 @@ class Logger {
    @param visit_count The current visit count of the node.
    */
   void log_backpropagation_result(const std::array<int, 4>& move,
-                                  int win_count, int visit_count);
+                                  float value, int visit_count);
 
   /*
    @brief Logs the current stats of the root node.

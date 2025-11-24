@@ -7,8 +7,8 @@
 #include <iostream>
 
 Game::Game(int board_size, std::unique_ptr<Player> player1,
-           std::unique_ptr<Player> player_2, GameDataset& dataset)
-    : board(board_size), current_player_index(0), dataset_(dataset) {
+           std::unique_ptr<Player> player_2)
+    : board(board_size), current_player_index(0) {
   players[0] = std::move(player1);
   players[1] = std::move(player_2);
 }
@@ -34,14 +34,17 @@ Cell_state Game::play() {
         std::cout << "\nPlayer " << current_player_index + 1 << "'s turn:" << std::endl;
         board.display_board(std::cout);
         auto [chosen_move, logits] = players[current_player_index]->choose_move(board, current_player);
-        // Skip if random move or human move
+        // Save game result for data
         if (logits.numel() > 1000) {
-            auto board_tensor = board.to_tensor(current_player);
-            auto pi_tensor = logits;
-            auto mask_tensor = board.get_legal_mask(current_player);  
-            auto z_tensor = torch::full({1}, 0.0, torch::kFloat32); // temporary, will update after game
 
-            dataset_.add_position(board_tensor, pi_tensor, z_tensor, mask_tensor);
+            result_logits.push_back(logits);              
+            result_states.push_back(board.to_tensor(current_player));
+            result_mask.push_back(board.to_tensor(current_player));
+            float z_value;
+            if (current_player == Cell_state::X) {z_value = 0.0;} 
+            else if (current_player == Cell_state::O) {z_value = 1.0;}
+            result_z.push_back(torch::full({1}, z_value, torch::kFloat32));
+
         }
         int chosen_x = chosen_move[0];
         int chosen_y = chosen_move[1];
@@ -59,24 +62,34 @@ Cell_state Game::play() {
     Cell_state winner = board.check_winner();
     std::cout << "Player " << winner << " wins!" << std::endl;
 
-    // if (!result_z.empty()) {
-    //     for (auto& z_tensor : result_z) {
-    //         float& val = z_tensor.accessor<float,1>()[0]; // get the single float
+    if (!result_z.empty()) {
+        for (auto& z_tensor : result_z) {
+            float& val = z_tensor.accessor<float,1>()[0]; // get the single float
 
-    //         if (winner == Cell_state::X) {
-    //             // X wins: 0 → 1, 1 → -1
-    //             val = (val == 0.0f) ? 1.0f : -1.0f;
-    //         }
-    //         else if (winner == Cell_state::O) {
-    //             // O wins: 0 → -1, 1 → 1
-    //             val = (val == 0.0f) ? -1.0f : 1.0f;
-    //         }
-    //         else {
-    //             // Draw: all 0
-    //             val = 0.0f;
-    //         }
-    //     }
-    // }
+            if (winner == Cell_state::X) {
+                // X wins: 0 → 1, 1 → -1
+                val = (val == 0.0f) ? 1.0f : -1.0f;
+            }
+            else if (winner == Cell_state::O) {
+                // O wins: 0 → -1, 1 → 1
+                val = (val == 0.0f) ? -1.0f : 1.0f;
+            }
+            else {
+                // Draw: all 0
+                val = 0.0f;
+            }
+        }
+    }
+
+    for (size_t i = 0; i < result_states.size(); ++i) {
+        auto board_tensor = result_states[i];  // (11,5,9) for example
+        auto pi_tensor = result_logits[i];     // (1800)
+        auto z_tensor = result_z[i];           // scalar (1)
+        auto mask_tensor = result_mask[i];     // (1800)
+
+        dataset.add_position(board_tensor, pi_tensor, z_tensor, mask_tensor);
+    }
+
     // int idx = 3;
     // std::cout << "Logits at index " << idx << ":\n" << result_logits[idx] << std::endl;
     // std::cout << "States at index " << idx << ":\n" << result_states[idx] << std::endl;

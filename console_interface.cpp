@@ -2,9 +2,11 @@
 #include <chrono>
 #include <thread>
 #include <climits>
+#include <random>
 
 #include "board.h"
 #include "mcts_agent.h"
+#include "nn_model.h"
 
 
 bool is_integer(const std::string& s) {
@@ -100,8 +102,8 @@ std::unique_ptr<Mcts_player> create_mcts_agent(
     const std::string& agent_prompt) {
     std::cout << "\nInitializing " << agent_prompt << ":\n";
 
-    int max_decision_time_ms = get_parameter_within_bounds(
-        "Max decision time in milliseconds(at least 100) : ", 100, INT_MAX);
+    int max_iteration = get_parameter_within_bounds(
+        "Max iteration number (at least 10) : ", 0, INT_MAX);
 
     double exploration_constant = 1.41;
 
@@ -114,7 +116,7 @@ std::unique_ptr<Mcts_player> create_mcts_agent(
             "Would you like to enable verbose mode? (y/n): ") == 'y');
 
     return std::make_unique<Mcts_player>(
-        exploration_constant, std::chrono::milliseconds(max_decision_time_ms),
+        exploration_constant, max_iteration,
         is_verbose);
 }
 
@@ -128,6 +130,7 @@ void countdown(int seconds) {
 }
 
 void start_match_against_robot() {
+    GameDataset dataset(1000);
     int human_player_number = get_parameter_within_bounds(
         "Enter '1' if you want to be Player 1 (X) or '2' if you "
         "want to be "
@@ -140,38 +143,82 @@ void start_match_against_robot() {
     auto human_player = std::make_unique<Human_player>();
 
     if (human_player_number == 1) {
-        Game game(board_size, std::move(human_player), std::move(mcts_agent));
+        Game game(board_size, std::move(human_player), std::move(mcts_agent), dataset);
         game.play();
     }
     else {
         if (mcts_agent->get_is_verbose()) {
             countdown(3);
         }
-        Game game(board_size, std::move(mcts_agent), std::move(human_player));
+        Game game(board_size, std::move(mcts_agent), std::move(human_player), dataset);
         game.play();
     }
 }
 
 void start_robot_arena() {
-
+    GameDataset dataset(1000);
     int board_size = 9;
 
     auto mcts_agent_1 = create_mcts_agent("first agent");
     auto mcts_agent_2 = create_mcts_agent("second agent");
 
-    Game game(board_size, std::move(mcts_agent_1), std::move(mcts_agent_2));
+    Game game(board_size, std::move(mcts_agent_1), std::move(mcts_agent_2), dataset);
     game.play();
 }
 
 
+void generate_data() {
+    torch::manual_seed(0);
+    torch::Device device(torch::kCUDA);
+    if (!torch::cuda::is_available()) device = torch::kCPU;
+    GameDataset dataset(20);
+    auto mcts_agent_1  = std::make_unique<Mcts_player>(1, 20, false);
+    auto mcts_agent_2  = std::make_unique<Mcts_player>(1, 20, false);
+
+    Game game(9, std::move(mcts_agent_1), std::move(mcts_agent_2), dataset);
+    game.play();
+
+    AlphaZeroNetWithMask model;
+    train(model, dataset, 16, 5, 1e-3, device);
+}
+
+void train() {
+    torch::manual_seed(0);
+    torch::Device device(torch::kCUDA);
+    if (!torch::cuda::is_available()) device = torch::kCPU;
+
+    int N = 200;
+
+    // Create dataset with capacity N
+    GameDataset dataset(200);
+    // Generate the same type of dummy data as before
+    for (int i = 0; i < N; i++) {
+        auto board = torch::randn({11, 5, 9});
+        auto pi = torch::rand({1800});
+        auto z = torch::randint(-1, 2, {1}, torch::kFloat32).squeeze(0);
+
+        auto mask = torch::zeros({1800});
+        auto idx = torch::randint(0, 1800, {72}, torch::kLong);
+        mask.index_put_({idx}, 1);
+
+        dataset.add_position(board, pi, z, mask);
+    }
+
+    AlphaZeroNetWithMask model;
+    train(model, dataset, 16, 5, 1e-3, device);
+    torch::save(model, "checkpoint/1.pt");
+    std::cout << "✅ Model saved successfully!\n";
+}
+
+
 void start_human_arena() {
+  GameDataset dataset(1000);
   int board_size = 9;
   auto human_player_1 = std::make_unique<Human_player>();
   auto human_player_2 = std::make_unique<Human_player>();
-  Game game(board_size, std::move(human_player_1), std::move(human_player_2));
+  Game game(board_size, std::move(human_player_1), std::move(human_player_2), dataset);
   game.play();
 }
-
 
 void run_console_interface() {
   print_welcome_ascii_art();
@@ -187,7 +234,7 @@ void run_console_interface() {
                 << "[3] Human player vs AI player\n"
                 << "[4] (H)Exit\n";
 
-      option = get_parameter_within_bounds("Option: ", 1, 4);
+      option = get_parameter_within_bounds("Option: ", 1, 6);
       std::cout << "\n";
 
       switch (option) {
@@ -202,6 +249,12 @@ void run_console_interface() {
           break;
         case 4:
           is_running = false;
+          break;
+        case 5:
+          generate_data();
+          break;
+        case 6:
+          train();
           break;
         default:
           break;

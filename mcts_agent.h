@@ -1,13 +1,13 @@
 #ifndef MCTS_AGENT_H
 #define MCTS_AGENT_H
 
-#include <chrono>
 #include <memory>
 #include <mutex>
 #include <random>
 #include <vector>
 
 #include "board.h"
+#include "nn_model.h"
 #include "logger.h"
 
 /*
@@ -21,7 +21,38 @@
  methods, and a `Cell_state` enum with `Empty`, `X`, and `O`.
 
  @param exploration_factor Controls exploration vs exploitation in UCT.
- @param max_decision_time Time limit for move selection (ms).
+ @param Max number of iteration (ms).
+ @param is_verbose Enables detailed logging.
+ 
+ */
+
+class NeuralN {
+public:
+    // Constructor: loads the model once
+    NeuralN(const std::string& model_path, torch::Device device = torch::kCPU);
+
+    // Predict method
+    std::pair<torch::Tensor, torch::Tensor> predict(torch::Tensor input, torch::Tensor legal_mask);
+
+private:
+    torch::nn::ModuleHolder<AlphaZeroNetWithMaskImpl> model; // the neural network
+    torch::Device device;
+};
+
+
+
+/*
+ @class Mcts_agent
+ @brief Implements a Monte Carlo Tree Search (MCTS) agent for decision-making in games.
+
+ Simulates gameplay to determine the best move within a time limit, balancing exploration
+ and exploitation using the UCT formula. Supports optional logging.
+ 
+ @note Assumes a `Board` class with `get_valid_moves()`, `make_move()`, and `check_winner()`
+ methods, and a `Cell_state` enum with `Empty`, `X`, and `O`.
+
+ @param exploration_factor Controls exploration vs exploitation in UCT.
+ @param Max number of iteration (ms).
  @param is_verbose Enables detailed logging.
  
  */
@@ -33,13 +64,13 @@ class Mcts_agent {
    
    @param exploration_factor  The constant of exploration in
    the UCT formula.
-   @param max_decision_time Maximum time allowed for making a decision (milliseconds)
+   @param Max number of iteration 
    @param is_verbose If true, enables logging to the console
    using the Logger class.
  
    */
   Mcts_agent(double exploration_factor,
-             std::chrono::milliseconds max_decision_time,
+             int number_iteration,
              bool is_verbose = false);
 
   /*
@@ -57,12 +88,15 @@ class Mcts_agent {
    @throws runtime_error If insufficient simulations prevent a reliable decision.
    */
 
-  std::array<int, 4> choose_move(const Board& board, Cell_state player);
+  std::pair<std::array<int, 4>,torch::Tensor> choose_move(const Board& board, Cell_state player);
+
+  std::array<int, 4> choose_move_randomly(const Board& board, Cell_state player, int times);
 
  private:
+  std::shared_ptr<NeuralN> agent;
   // Agent configuration
   double exploration_factor;
-  std::chrono::milliseconds max_decision_time;
+  int number_iteration;
   bool is_verbose = false;
 
   // Logging
@@ -84,13 +118,38 @@ class Mcts_agent {
    */
 
   struct Node {
+    
     /*
-     @brief The number of wins that have been recorded through this node.
+     @brief The evaluation of the node from the Neural Network.
+    */
+    float value_from_nn;
+    
+    /*
+     @brief The accumulated value divided by the number of visits.
+    */
+    float value_from_mcts;
+
+    /*
+    @brief A boolean flag that shows if the node has already been initialized.
+
+    True if the node has already been initialized NN. 
+    */
+    bool expanded =false;
+    
+    /*
+     @brief The number of value that have been recorded through this node.
      
      This is incremented every time a simulation (or playout) that passes
-     through this node results in a win.
+     through this node.
      */
-    int win_count;
+    float acc_value;
+
+    /*
+     @brief Prior policy probability from the NN
+     
+     This is the prior policy probability from the NN
+     */
+    float prior_proba;
     /*
      @brief The number of times this node has been visited during the search.
      
@@ -139,22 +198,23 @@ class Mcts_agent {
      @param parent_node The parent node in the tree. default: nullptr
      is used for the root node.
      */
-    Node(Cell_state player, std::array<int, 4> move,
+    Node(Cell_state player, std::array<int, 4> move, float prior_proba, float value_from_nn,
          std::shared_ptr<Node> parent_node = nullptr);
   };
 
   /*
-   @brief Expands a node by generating all valid child nodes based on the current game state.
+   @brief Initiate the node and call the NN on the node.
    
    Populates the `child_nodes` of the given node with new nodes representing valid moves.
    Each child node is linked back to the input node as its parent.
+   Initiate all child node prior probability from the NN policy head
    If verbose mode is enabled, details of each new child node are printed.
    
    @param node A shared_ptr to the node to be expanded.
    @param board The current game state.
    */
 
-  void expand_node(const std::shared_ptr<Node>& node, const Board& board);
+  float initiate_and_run_nn(const std::shared_ptr<Node>& node, const Board& board);
 
   /*
    @brief Runs the main loop of Monte Carlo Tree Search (MCTS).
@@ -169,17 +229,48 @@ class Mcts_agent {
   */
 
   void perform_mcts_iterations(
-      const std::chrono::time_point<std::chrono::high_resolution_clock>&
-          end_time,
+      const int number_iteration,
       int& mcts_iteration_counter, const Board& board);
 
+
   /*
+   @brief Computes the policy logits tensor for a given parent node.
+
+   Generates a flattened tensor representing the estimated win rates of all possible moves
+   from the given parent node. Each child node's value is set to the ratio of the child's visit count to the parent's
+   visit count. Moves that have not been explored are assigned a value of 0.
+
+   The tensor shape is determined by the board dimensions and move encoding:
+   - X: board width
+   - Y: board height
+   - DIR: number of possible directions
+   - TAR: number of possible targets
+
+   @param parent_node Shared pointer to the parent node whose children are evaluated.
+   @return A 1D torch::Tensor of size X * Y * DIR * TAR containing normalized move win rates.
+*/
+
+  torch::Tensor get_policy_logits(const std::shared_ptr<Node>& parent_node) const;
+
+  /*
+  @brief Converts a logits tensor into a list of valid moves with their scores.
+
+  Takes a 1D tensor representing policy logits for all possible moves and returns a
+  vector of moves that have non-zero logits. Each move is represented as an array
+  of four integers: {x, y, direction, target}, along with its corresponding logit value.
+
+  @param logits_tensor 1D or flattened tensor of policy logits for all moves.
+  @return A vector of pairs, where each pair contains a move array {x, y, dir, tar} and its logit value.
+*/
+
+  std::vector<std::pair<std::array<int,4>, float>> get_moves_with_logits(const torch::Tensor& logits_tensor) const;
+   /*
    @brief Selects the best child of a given parent node based on the Upper
    Confidence Bound for Trees (UCT) score.
    
    This function iterates through all the child nodes of the given parent
    node, and for each child, calculates its UCT score using the
-   calculate_uct_score() method. The child with the highest UCT score is
+   calculate_puct_score() method. The child with the highest UCT score is
    selected as the best child. If verbose mode is enabled, the function prints
    the move coordinates and the UCT score of the selected child.
    
@@ -187,8 +278,9 @@ class Mcts_agent {
    be evaluated.
    @return A shared_ptr to the Node that is selected as the best child.
    */
-  std::shared_ptr<Node> select_child_for_playout(
-      const std::shared_ptr<Node>& parent_node);
+
+  std::pair<std::shared_ptr<Mcts_agent::Node>, Board> select_child_for_playout(
+      const std::shared_ptr<Node>& parent_node, Board board);
 
   /**
    @brief Computes the Upper Confidence Bound for Trees (UCT) score.
@@ -203,7 +295,7 @@ class Mcts_agent {
    @param parent_node A shared_ptr to the parent Node of the child node.
    @return The calculated UCT score.
    */
-  double calculate_uct_score(const std::shared_ptr<Node>& child_node,
+  double calculate_puct_score(const std::shared_ptr<Node>& child_node,
                              const std::shared_ptr<Node>& parent_node);
 
   /**
@@ -217,7 +309,7 @@ class Mcts_agent {
    state is copied, so the original board is not modified.
    @return The Cell_state of the winning player.
    */
-  Cell_state simulate_random_playout(const std::shared_ptr<Node>& node,
+  float simulate_random_playout(const std::shared_ptr<Node>& node,
                                      Board board);
 
 
@@ -233,7 +325,7 @@ class Mcts_agent {
    @param node A shared_ptr to the Node at which to start the backpropagation.
    @param winner The Cell_state of the winning player in the game simulation.
    */
-  void backpropagate(std::shared_ptr<Node>& node, Cell_state winner);
+  void backpropagate(std::shared_ptr<Node>& node, float value);
 
   /**
    @brief Selects the best child node based on the highest win ratio.
@@ -246,7 +338,7 @@ class Mcts_agent {
    @throws std::runtime_error If no child can be selected due to insufficient
    statistics.
    */
-  std::shared_ptr<Node> select_best_child();
+  std::shared_ptr<Node> select_best_child(std::shared_ptr<Node>& node);
 };
 
 #endif

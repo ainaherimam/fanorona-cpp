@@ -1,0 +1,180 @@
+#ifndef ALPHAZERO_MODEL_H
+#define ALPHAZERO_MODEL_H
+
+#include <torch/torch.h>
+#include <iostream>
+#include <vector>
+#include <string>
+#include <random>
+
+// =============================================================
+// ===================== GameDataset ============================
+// =============================================================
+struct GameDataset : torch::data::datasets::Dataset<GameDataset> {
+    size_t max_size;
+    size_t next_index = 0;
+    std::vector<torch::Tensor> boards, pi_targets, z_targets, legal_mask;
+
+    GameDataset(size_t max_size_) : max_size(max_size_) {
+        boards.resize(max_size);
+        pi_targets.resize(max_size);
+        z_targets.resize(max_size);
+        legal_mask.resize(max_size);
+    }
+
+    void add_position(torch::Tensor board, torch::Tensor pi, torch::Tensor z, torch::Tensor mask) {
+        boards[next_index] = board;
+        pi_targets[next_index] = pi;
+        z_targets[next_index] = z;
+        legal_mask[next_index] = mask;
+
+        next_index = (next_index + 1) % max_size;  // overwrite oldest data
+    }
+
+    torch::data::Example<> get(size_t) override {
+        std::uniform_int_distribution<size_t> dist(0, max_size - 1);
+        static std::mt19937 rng(std::random_device{}());
+        size_t idx = dist(rng);
+        return {boards[idx], torch::cat({pi_targets[idx], z_targets[idx].unsqueeze(0), legal_mask[idx]})};
+    }
+
+    torch::optional<size_t> size() const override { return max_size; }
+};
+
+
+// =============================================================
+// ===================== AlphaZeroNetWithMask ===================
+// =============================================================
+struct AlphaZeroNetWithMaskImpl : torch::nn::Module {
+    torch::nn::Conv2d conv_in{nullptr};
+    std::vector<torch::nn::Sequential> res_blocks;
+    torch::nn::Conv2d policy_head_conv{nullptr};
+    torch::nn::Linear policy_fc{nullptr};
+    torch::nn::Conv2d value_head_conv{nullptr};
+    torch::nn::Linear value_fc1{nullptr}, value_fc2{nullptr};
+
+    int H, W;
+
+    AlphaZeroNetWithMaskImpl(int C=11, int H_=5, int W_=9, int num_moves=1800, int channels=64, int n_blocks=6) 
+        : H(H_), W(W_) {
+
+        conv_in = register_module("conv_in", torch::nn::Conv2d(torch::nn::Conv2dOptions(C, channels, 3).padding(1)));
+
+        for (int i = 0; i < n_blocks; ++i) {
+            auto block = torch::nn::Sequential(
+                torch::nn::Conv2d(torch::nn::Conv2dOptions(channels, channels, 3).padding(1)),
+                torch::nn::BatchNorm2d(channels),
+                torch::nn::ReLU(),
+                torch::nn::Conv2d(torch::nn::Conv2dOptions(channels, channels, 3).padding(1)),
+                torch::nn::BatchNorm2d(channels)
+            );
+            res_blocks.push_back(register_module("resblock" + std::to_string(i), block));
+        }
+
+        policy_head_conv = register_module("policy_head_conv", torch::nn::Conv2d(torch::nn::Conv2dOptions(channels, 2, 1)));
+        policy_fc = register_module("policy_fc", torch::nn::Linear(2 * H * W, num_moves));
+
+        value_head_conv = register_module("value_head_conv", torch::nn::Conv2d(torch::nn::Conv2dOptions(channels, 1, 1)));
+        value_fc1 = register_module("value_fc1", torch::nn::Linear(H * W, 64));
+        value_fc2 = register_module("value_fc2", torch::nn::Linear(64, 1));
+    }
+
+    std::pair<torch::Tensor, torch::Tensor> forward(torch::Tensor x, torch::Tensor legal_mask = torch::Tensor()) {
+        x = torch::relu(conv_in->forward(x));
+        for (auto &block : res_blocks) {
+            auto residual = x.clone();
+            x = block->forward(x);
+            x = torch::relu(x + residual);
+        }
+
+        // --- Policy Head ---
+        auto p = policy_head_conv->forward(x).view({x.size(0), -1});
+        p = policy_fc->forward(p);
+        if (legal_mask.defined()) {
+            p = p.masked_fill(legal_mask == 0, -1e9);
+        }
+        p = torch::log_softmax(p, 1);
+
+        // --- Value Head ---
+        auto v = value_head_conv->forward(x).view({x.size(0), -1});
+        v = torch::relu(value_fc1->forward(v));
+        v = torch::tanh(value_fc2->forward(v)).squeeze(-1);
+
+        return {p, v};
+    }
+
+    // ----------------- Save / Load -----------------
+    void save_model(const std::string& path) {
+        try {
+            torch::save(shared_from_this(), path);
+            std::cout << "✅ Model saved to: " << path << std::endl;
+        } catch (const c10::Error& e) {
+            std::cerr << "❌ Error saving model: " << e.msg() << std::endl;
+        }
+    }
+
+    static torch::nn::ModuleHolder<AlphaZeroNetWithMaskImpl> load_model(const std::string& path) {
+        try {
+            auto model = std::make_shared<AlphaZeroNetWithMaskImpl>();
+            torch::load(model, path);
+            return model;
+        } catch (const c10::Error& e) {
+            std::cerr << "❌ Error loading model: " << e.msg() << std::endl;
+            throw;
+        }
+    }
+};
+TORCH_MODULE(AlphaZeroNetWithMask);
+
+// =============================================================
+// ===================== Loss Function ==========================
+// =============================================================
+inline torch::Tensor alphazero_loss(torch::Tensor policy_pred, torch::Tensor value_pred,
+                                   torch::Tensor pi_target, torch::Tensor z_target){
+
+    auto policy_loss = -(pi_target * policy_pred).sum(1).mean();
+    auto value_loss = torch::mse_loss(value_pred, z_target);
+
+    //MAYBE L2 REGULARIZATION HERE!!!
+    return policy_loss + value_loss;
+
+}
+
+// =============================================================
+// ===================== Training Function ======================
+// =============================================================
+inline void train(AlphaZeroNetWithMask &model, GameDataset &dataset, int batch_size=32, int epochs=5,
+                  double lr=1e-3, torch::Device device=torch::kCUDA) {
+
+    model->to(device);
+    auto dataloader = torch::data::make_data_loader(dataset.map(torch::data::transforms::Stack<>()), batch_size);
+    torch::optim::Adam optimizer(model->parameters(), lr);
+    model->train();
+
+    for (int epoch = 1; epoch <= epochs; ++epoch) {
+        double total_loss = 0.0;
+        size_t batch_idx = 0;
+
+        for (auto &batch : *dataloader) {
+            auto b = batch.data.to(device);
+            auto t = batch.target.to(device);
+
+            auto pi_target = t.slice(1, 0, 1800);
+            auto z_target = t.slice(1, 1800, 1801).squeeze(1);
+            auto mask = t.slice(1, 1801, t.size(1));
+
+            optimizer.zero_grad();
+            auto [p, v] = model->forward(b, mask);
+            auto loss = alphazero_loss(p, v, pi_target, z_target);
+            loss.backward();
+            optimizer.step();
+
+            total_loss += loss.item<double>();
+            batch_idx++;
+        }
+
+        std::cout << "Epoch " << epoch << "/" << epochs << " - Loss: " << total_loss / batch_idx << std::endl;
+    }
+}
+
+#endif // ALPHAZERO_MODEL_H

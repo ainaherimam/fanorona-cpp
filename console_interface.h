@@ -5,8 +5,10 @@
 #include <iostream>
 #include <memory>
 #include <stdexcept>
+#include <random>
 
 #include "game.h"
+#include "nn_model.h"
 
 /*
  @brief Checks if the input string is an integer.
@@ -133,6 +135,12 @@ void start_human_arena();
  It also handles exceptions and displays appropriate error messages.
  */
 void run_console_interface();
+
+
+/*
+????????????????????????????????????
+ */
+void train();
 
 /*
  @brief Prints welcome message in ASCII art.

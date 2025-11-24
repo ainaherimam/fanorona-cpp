@@ -1,4 +1,5 @@
 ﻿#include "board.h"
+#include <torch/torch.h>
 
 #include <algorithm>
 #include <cctype>
@@ -13,12 +14,9 @@
 
 Board::Board(int size)
     : board_size(size),
-    board(size, std::vector<Cell_state>(size, Cell_state::Empty)) {
-    if (size < 2) {
-        throw std::invalid_argument("Board size cannot be less than 2.");
-    }
-    if (size == 5) {
-        // Initialize the board with the specific pattern
+    empty_board(5, std::vector<Cell_state>(9, Cell_state::Empty)),
+    history(4, std::vector<std::vector<Cell_state>>(5, std::vector<Cell_state>(9, Cell_state::Empty))) ,
+    board(9, std::vector<Cell_state>(9, Cell_state::Empty)) {
         for (size_t row = 0; row < 5; ++row) {
             for (size_t col = 0; col < static_cast<size_t>(size); ++col) {
                 if (row <= 1) {
@@ -29,41 +27,31 @@ Board::Board(int size)
                 }
             }
         }
-        board[2][0] = Cell_state::O;
-        board[2][1] = Cell_state::X;
-        board[2][2] = Cell_state::Empty;
+        board[2][0] = Cell_state::X;
+        board[2][1] = Cell_state::O;
+        board[2][2] = Cell_state::X;
         board[2][3] = Cell_state::O;
-        board[2][4] = Cell_state::X;
-    }
-    else if (size == 9) {
-        for (size_t row = 0; row < 5; ++row) {
-            for (size_t col = 0; col < static_cast<size_t>(size); ++col) {
-                if (row <= 1) {
-                    board[row][col] = Cell_state::X;
-                }
-                else if (row >= 3) {
-                    board[row][col] = Cell_state::O;
-                }
-            }
-        }
-        board[2][0] = Cell_state::O;
-        board[2][1] = Cell_state::X;
-        board[2][2] = Cell_state::O;
-        board[2][3] = Cell_state::X;
         board[2][4] = Cell_state::Empty;
-        board[2][5] = Cell_state::O;
-        board[2][6] = Cell_state::X;
-        board[2][7] = Cell_state::O;
-        board[2][8] = Cell_state::X;
+        board[2][5] = Cell_state::X;
+        board[2][6] = Cell_state::O;
+        board[2][7] = Cell_state::X;
+        board[2][8] = Cell_state::O;
     }
 
-}
+
 
 
 int Board::get_board_size() const { return board_size; }
 
 bool Board::is_within_bounds(int move_x, int move_y) const {
   return move_x >= 0  && move_x < 5 && move_y >= 0 && move_y < board_size;
+}
+
+void Board::add_history() {
+        if (history.size() == 4) {
+            history.erase(history.begin());
+        history.push_back(board);
+    }
 }
 
 bool Board::is_in_vector(int x, int y, const std::vector<std::array<int, 2>>& vector) const {
@@ -218,9 +206,10 @@ std::vector<std::array<int, 4>> Board::get_valid_moves(Cell_state player) const 
 }
 
 void Board::make_move(int move_x, int move_y, int dir, int tar, Cell_state player) {
-  // Check if the move is valid. If not, throw an exception.
+
     int dest_x = move_x + offset_x[dir];
     int dest_y = move_y + offset_y[dir];
+    add_history();
 
     board[move_x][move_y] = Cell_state::Empty;
     board[dest_x][dest_y] = player;
@@ -240,6 +229,8 @@ void Board::make_move(int move_x, int move_y, int dir, int tar, Cell_state playe
         }
         take(move_x, move_y, dir, tar, player);
     }
+
+
 
 }
 
@@ -265,6 +256,55 @@ void Board::take(int move_x, int move_y, int dir, int tar, Cell_state player) {
         tar_row += mult * offset_x[dir];
         tar_col += mult * offset_y[dir];
     }
+}
+
+torch::Tensor Board::valid_moves_map(Cell_state player) const {
+    torch::Tensor moves_map = torch::zeros({9, 5}, torch::kFloat32);
+    auto valid_moves = get_valid_moves(player);
+
+    for (const auto& move : valid_moves) {
+        int x = move[0];
+        int y = move[1];
+        if (x >= 0 && x < 9 && y >= 0 && y < 5)
+            moves_map[x][y] = 1.0f;
+    }
+    return moves_map;
+}
+
+torch::Tensor Board::to_tensor(Cell_state player) const {
+
+    torch::Tensor stacked = torch::zeros({11, 5, 9}, torch::kFloat32);
+
+    // Helper lambda to fill a plane for a board
+    auto fill_planes = [](torch::Tensor& tensor, int start_plane, 
+                        const std::vector<std::vector<Cell_state>>& b,
+                        Cell_state current_player) 
+    {
+        for (int x = 0; x < 5; ++x) {
+            for (int y = 0; y < 9; ++y) {
+                if (b[x][y] == current_player) {
+                    tensor[start_plane][x][y] = 1.0f;
+                } else if (b[x][y] != Cell_state::Empty) {
+                    tensor[start_plane + 1][x][y] = 1.0f;
+                }
+                //Current plane
+                float fill_value = (current_player == Cell_state::X) ? 0.0f : 1.0f; //0 if player 1, 1 if player 2
+                tensor[10][x][y] = fill_value;
+            }
+        }
+    };
+
+    // Start with current board
+    fill_planes(stacked, 0, board, player);
+
+    // Fill history boards in reverse order: T-1, T-2, ...
+    for (size_t i = 0; i < 4; ++i) {
+        int plane_index = (i + 1) * 2;
+        const auto& hist_board = history[3 - i]; // reverse order
+        fill_planes(stacked, plane_index, hist_board, player);
+    }
+
+    return stacked; 
 }
 
 
@@ -296,26 +336,151 @@ Cell_state Board::check_winner() const {
     return Cell_state::Empty;
 }
 
-void Board::display_board(std::ostream& os = std::cout) const {
+torch::Tensor Board::get_legal_mask(Cell_state player) const {
+    const int X = 5;
+    const int Y = 10;
+    const int DIR = 9;
+    const int TAR = 4; 
+    const int total_size = X * Y * DIR * TAR;
+
+    torch::Tensor all_moves = torch::zeros({total_size}, torch::kFloat32);
+
+    // Helper: convert (x,y,dir,tar) → flat index
+    auto index = [&](int x, int y, int dir, int tar) -> int {
+        int dir_idx = dir - 1; 
+        int tar_idx = tar + 1; 
+        return x * (Y * DIR * TAR) + y * (DIR * TAR) + dir_idx * TAR + tar_idx;
+        };
+    
+    auto valid_moves = get_valid_moves(player);
+    for (const auto& move : valid_moves) {
+
+        int idx = index(move[0], move[1], move[2], move[3]);
+
+        if (idx >= 0 && idx < total_size)
+            all_moves[idx] = 1.0f;
+    }
+
+    return all_moves;
+}
+
+// void Board::display_board(std::ostream& os = std::cout) const {
+//     os << "\n";
+
+//     // Loop through each cell in the board.
+//     for (size_t row = 0; row < 5; ++row) {
+//         for (size_t col = 0; col < static_cast<std::size_t>(board_size); ++col) {
+//             // Print the state of the cell.
+//             os << board[row][col] << " ";
+//         }
+//         // Print the row number at the end of each row.
+//         os << row + 1;
+//         os << "\n";
+//     }
+
+//     // Print the bottom coordinate labels
+//     for (size_t col = 0; col < static_cast<std::size_t>(board_size); ++col) {
+//         os << static_cast<char>('a' + col) << " ";
+//     }
+//     os << "\n\n";
+// }
+
+void Board::display_board(std::ostream& os) const {
+    const int ROWS = 5;
+    const int COLS = board_size;
+
+    os << "      ";
+    for (int c = 0; c < COLS; ++c)
+        os << static_cast<char>('A' + c) << "  ";
     os << "\n";
 
-    // Loop through each cell in the board.
-    for (size_t row = 0; row < 5; ++row) {
-        for (size_t col = 0; col < static_cast<std::size_t>(board_size); ++col) {
-            // Print the state of the cell.
-            os << board[row][col] << " ";
-        }
-        // Print the row number at the end of each row.
-        os << row + 1;
-        os << "\n";
-    }
+    for (int r = 0; r < ROWS; ++r) {
+        int rr = r; 
 
-    // Print the bottom coordinate labels
-    for (size_t col = 0; col < static_cast<std::size_t>(board_size); ++col) {
-        os << static_cast<char>('a' + col) << " ";
+        os << (rr + 1) << "   ";
+        for (int c = 0; c < COLS; ++c) {
+            os << board[rr][c];           
+            if (c < COLS - 1)
+                os << "───";              
+        }
+        os << "\n";
+
+        if (rr >= 0) {
+            os << "    ";
+
+            bool row_even = (rr % 2 == 0);  
+
+            for (int c = 0; c < COLS - 1; ++c) {
+                bool col_even = (c % 2 == 0);
+
+                std::string slash;
+                if (rr==4) {
+
+                    slash = "";
+                } else if (row_even){
+                     slash = col_even ? " ╲ " : " ╱ ";
+                     os << "│" << slash << "";   
+                }
+                else{
+                    slash = col_even ? " ╱ " : " ╲ ";
+                    os << "│" << slash << "";   
+                }
+
+                
+            }
+
+            os << "│\n";
+        }
     }
-    os << "\n\n";
 }
+
+// void Board::display_board(std::ostream& os) const {
+//     const int ROWS = 5;
+//     const int COLS = board_size;
+
+//     // ---- COLUMN LABELS ----
+//     os << "    ";
+//     for (int c = 0; c < COLS; ++c)
+//         os << static_cast<char>('A' + c) << "   ";
+//     os << "\n";
+
+//     for (int r = 0; r < ROWS; ++r) {
+//         int rr = ROWS - 1 - r;  // convert to 5 → 1
+
+//         // ---- NODE LINE ----
+//         os << (rr + 1) << "  ";
+//         for (int c = 0; c < COLS; ++c) {
+//             os << board[rr][c];
+//             if (c < COLS - 1) os << "─";
+//         }
+//         os << "\n";
+
+//         // ---- CONNECTOR LINE ----
+//         if (rr > 0) {
+//         os << "   ";
+
+//         bool row_even = (rr % 2 == 0);
+
+//         for (int c = 0; c < COLS - 1; ++c) {
+//             bool col_even = (c % 2 == 0);
+
+//             std::string slash;
+//             if (row_even) {
+//                 // even rows start with ╲
+//                 slash = col_even ? "╲" : "╱";
+//             } else {
+//                 // odd rows start with ╱
+//                 slash = col_even ? "╱" : "╲";
+//             }
+
+//             os << "│" << slash;
+//         }
+//         os << "│\n";
+// }
+//     }
+// }
+
+
 
 std::ostream& operator<<(std::ostream& os, const Board& board) {
   // Call the display_board() function to print the board to the output stream.

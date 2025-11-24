@@ -4,11 +4,13 @@
 #include <iostream>
 
 #include "mcts_agent.h"
+#include <torch/torch.h>
 
-std::array<int, 4> Human_player::choose_move(const Board& board,
+std::pair<std::array<int, 4>,torch::Tensor> Human_player::choose_move(const Board& board,
                                               Cell_state player) {
   int choice;
   bool valid_choice = false;
+  torch::Tensor dummy_tensor = torch::zeros({1}, torch::kFloat32);
   std::vector<std::array<int, 4>> all_moves = board.get_valid_moves(player);
   board.print_valid_moves(all_moves);
 
@@ -30,27 +32,27 @@ std::array<int, 4> Human_player::choose_move(const Board& board,
               continue;
           }
           else {
-              return all_moves[choice-1];
+              return {all_moves[choice-1], dummy_tensor};
           }
       }
 
   }
 
-  return { -1, -1, -1, -1 };  // should never reach this
+  return {{ -1, -1, -1, -1 }, dummy_tensor};  // should never reach this
 }
 
 
 Mcts_player::Mcts_player(double exploration_factor,
-                         std::chrono::milliseconds max_decision_time,
+                         int number_iteration,
                          bool is_verbose)
     : exploration_factor(exploration_factor),
-      max_decision_time(max_decision_time),
+      number_iteration(number_iteration),
       is_verbose(is_verbose) {}
 
-std::array<int, 4> Mcts_player::choose_move(const Board& board,
+std::pair<std::array<int, 4>,torch::Tensor> Mcts_player::choose_move(const Board& board,
                                              Cell_state player) {
 
-  Mcts_agent agent(exploration_factor, max_decision_time, is_verbose);
+  Mcts_agent agent(exploration_factor, number_iteration, is_verbose);
 
   return agent.choose_move(board, player);
 }

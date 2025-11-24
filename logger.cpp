@@ -37,17 +37,11 @@ void Logger::log_iteration_number(int iteration_number) {
   log(message.str());
 }
 
-void Logger::log_expanded_child(const std::array<int, 4>& move) {
-  std::ostringstream message;
-  message << "EXPANDED CHILD " << print_move(move);
-  log(message.str());
-}
-
 void Logger::log_selected_child(const std::array<int, 4>& move,
                                 double uct_score) {
   std::ostringstream message;
   message << "SELECTED CHILD " << print_move(move)
-          << " with UCT of ";
+          << " with PUCT of ";
   if (uct_score == std::numeric_limits<double>::max()) {
     message << "infinity";
   } else {
@@ -83,23 +77,20 @@ void Logger::log_simulation_step(Cell_state current_player, const Board& board,
   }
 }
 
-void Logger::log_simulation_end(Cell_state winning_player, const Board& board) {
+void Logger::log_simulation_end(float value) {
   if (is_verbose) {
     std::ostringstream message;
     std::ostringstream board_string;
-    board.display_board(board_string);
-    message << "DETECTED WIN for player " << winning_player
-            << " in Board state:\n"
-            << board_string.str();
+    message << "SUMULATION FROM NN WIN returns " << std::fixed << std::setprecision(2) << value;
     log(message.str());
   }
 }
 
 void Logger::log_backpropagation_result(const std::array<int, 4>& move,
-                                        int win_count, int visit_count) {
+                                        float value, int visit_count) {
   std::ostringstream message;
-  message << "BACKPROPAGATED result to node " << print_move(move)  
-          << ". It currently has " << win_count << " wins and "
+  message << "BACKPROPAGATED result to [" << print_move(move)  
+          << "]. It currently has a value of " << std::fixed << std::setprecision(2) << value << " and "
           << visit_count << " visits.";
   log(message.str());
 }
@@ -108,7 +99,7 @@ void Logger::log_root_stats(int visit_count, int win_count,
                             size_t child_nodes) {
   std::ostringstream message;
   message << "\nAFTER BACKPROPAGATION, root node has " << visit_count
-          << " visits, " << win_count << " wins, and " << child_nodes
+          << " visits, "  << " and " << child_nodes
           << " child nodes. Their details are:\n";
   log(message.str());
 }
@@ -131,7 +122,7 @@ void Logger::log_child_node_stats(const std::array<int, 4>& move,
 
 void Logger::log_timer_ran_out(int iteration_counter) {
   std::ostringstream message;
-  message << "\nTIMER RAN OUT. " << iteration_counter
+  message << "\nSIMULATION COMPLETE. " << iteration_counter
           << " iterations completed. CHOOSING A MOVE FROM ROOT'S CHILDREN:\n";
   log(message.str());
 }

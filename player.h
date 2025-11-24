@@ -5,6 +5,7 @@
 #include <utility>
 
 #include "board.h"
+#include <torch/torch.h>
 
 /*
  @brief The Player class is an abstract base class for all game player types
@@ -20,7 +21,7 @@ class Player {
    @param player The cell of the current player (Cell_state).
    @return The chosen move as an array of integers.
   */
-  virtual std::array<int, 4> choose_move(const Board& board,
+  virtual std::pair<std::array<int, 4>,torch::Tensor> choose_move(const Board& board,
                                           Cell_state player) = 0;
 };
 
@@ -41,7 +42,7 @@ class Human_player : public Player {
    @param player The cell of the current player (Cell_state).
    @return The chosen move as a pair of integers, row first, column second.
   */
-  std::array<int, 4> choose_move(const Board& board,
+  std::pair<std::array<int, 4>,torch::Tensor> choose_move(const Board& board,
                                   Cell_state player) override;
 };
 
@@ -60,11 +61,11 @@ public:
      /*
       @brief Mcts_player constructor initializes MCTS parameters.
       @param exploration_factor Exploration factor for MCTS.
-      @param max_decision_time Max time for decision making.
+      @param max interation number (it)
       @param is_verbose Enables verbose logging if true.
      */
     Mcts_player(double exploration_factor,
-        std::chrono::milliseconds max_decision_time,
+        int number_iteration,
         bool is_verbose = false);
 
     /*
@@ -75,7 +76,7 @@ public:
      @param player The current player.
      @return The chosen move as a pair of integers.
      */
-    std::array<int, 4> choose_move(const Board& board,
+    std::pair<std::array<int, 4>,torch::Tensor> choose_move(const Board& board,
         Cell_state player) override;
 
     /*
@@ -87,7 +88,7 @@ public:
 
 private:
     double exploration_factor;  // The exploration factor used in MCTS.
-    std::chrono::milliseconds max_decision_time;  // Maximum decision-making time.
+    int number_iteration;  // The maximum number of iteration.
     bool is_verbose;       // If true, enables verbose logging to console.
 };
 
