@@ -32,6 +32,7 @@ Fanorona is a centuries-old strategy board game originating from Madagascar. It 
 - **C++20 Compiler** (GCC 10+, Clang 10+, MSVC 2019+)
 - **CMake 3.20+**
 - **Build System** (Make, Ninja, or Visual Studio)
+- **Libtorch**
 
 ## Installation
 ```sh
