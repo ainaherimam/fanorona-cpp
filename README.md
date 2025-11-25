@@ -54,6 +54,5 @@ make -j$(nproc)
 
 ## 🌟 Acknowledgments
 - Inspired by the board game [Fanorona](https://en.wikipedia.org/wiki/Fanorona)
-- Thanks to [patrikasvanagas](https://github.com/patrikasvanagas/) for the help on the MCTS part.
 
 Enjoy playing and exploring the strategies of Fanorona!
