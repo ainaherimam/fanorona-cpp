@@ -194,7 +194,7 @@ void generate_data() {
           Cell_state winner = game.play();
           game_counter++;
           std::cout <<game_counter<<" Games completed - Stored positions: " 
-                    << dataset.current_size << "/512 - Player" << winner << "won\n"; 
+                    << dataset.current_size << "/512 - Player " << winner << " won\n"; 
       }
 
       std::cout << "✅ Replay buffer ready (" 
@@ -257,8 +257,9 @@ void run_console_interface() {
                 << "[1] Human player vs Human player\n"
                 << "[2] AI player vs AI player\n"
                 << "[3] Human player vs AI player\n"
+                << "[4] Initialize NN\n"
                 << "[5] Launch Self-Play\n"
-                << "[4] (H)Exit\n";
+                << "[6] (H)Exit\n";
 
       option = get_parameter_within_bounds("Option: ", 1, 6);
       std::cout << "\n";
@@ -273,13 +274,13 @@ void run_console_interface() {
         case 3:
             start_match_against_robot();
           break;
-        case 4:
+        case 6:
           is_running = false;
           break;
         case 5:
           generate_data();
           break;
-        case 6:
+        case 4:
           train();
           break;
         default:
