@@ -129,7 +129,7 @@ class Logger {
    @param win_count The current win count of the child node.
    @param visit_count The current visit count of the child node.
    */
-  void log_child_node_stats(const std::array<int, 4>& move, int win_count,
+  void log_child_node_stats(const std::array<int, 4>& move, float value,
                             int visit_count);
 
   /*

@@ -179,7 +179,6 @@ void generate_data() {
 
   std::cout << "🌱 Starting self-play...\n";
 
-  // Keep generating games until at least 2000 samples exist
   int cycles = 20;
   int game_counter = 0;
   for (int iter = 1; iter <= cycles; ++iter) {
@@ -188,14 +187,14 @@ void generate_data() {
       std::cout << "🔁 TRAINING CYCLE " << iter << "\n";
       std::cout << "=============================\n\n";
       std::cout << "🌱 Collecting Data...\n";
+
       // --- 1. SELF-PLAY PHASE ---
       while (dataset.current_size < data_number) {
-          Game game(9, std::make_unique<Mcts_player>(1.5, 200, false), std::make_unique<Mcts_player>(1.5, 200, false), dataset, false);
-          game.play();
+          Game game(9, std::make_unique<Mcts_player>(2, 500, false), std::make_unique<Mcts_player>(2, 500, false), dataset, true);
+          Cell_state winner = game.play();
           game_counter++;
           std::cout <<game_counter<<" Games completed - Stored positions: " 
-                    << dataset.current_size << "/512\n";
-          
+                    << dataset.current_size << "/512 - Player" << winner << "won\n"; 
       }
 
       std::cout << "✅ Replay buffer ready (" 
@@ -203,11 +202,9 @@ void generate_data() {
 
       // --- 2. TRAINING PHASE ---
       std::cout << "🎯 Training model...\n";
-      train(model, dataset, 64, 5, 1e-3, device);
+      train(model, dataset, 128, 5, 1e-3, device);
 
-      // --- 3. OPTIONAL: Clear buffer or keep it learning ---
-      // dataset.current_size stays and will be overwritten
-      // so new positions will replace old ones (good!)
+
   }
 }
 
@@ -216,25 +213,24 @@ void train() {
     torch::Device device(torch::kCUDA);
     if (!torch::cuda::is_available()) device = torch::kCPU;
 
-    int N = 200;
+    // int N = 200;
 
-    // Create dataset with capacity N
-    GameDataset dataset(200);
-    // Generate the same type of dummy data as before
-    for (int i = 0; i < N; i++) {
-        auto board = torch::randn({11, 5, 9});
-        auto pi = torch::rand({1800});
-        auto z = torch::randint(-1, 2, {1}, torch::kFloat32).squeeze(0);
+    // GameDataset dataset(N);
 
-        auto mask = torch::zeros({1800});
-        auto idx = torch::randint(0, 1800, {72}, torch::kLong);
-        mask.index_put_({idx}, 1);
+    // for (int i = 0; i < N; i++) {
+    //     auto board = torch::randn({11, 5, 9});
+    //     auto pi = torch::rand({1800});
+    //     auto z = torch::randint(-1, 2, {1}, torch::kFloat32).squeeze(0);
 
-        dataset.add_position(board, pi, z, mask);
-    }
+    //     auto mask = torch::zeros({1800});
+    //     auto idx = torch::randint(0, 1800, {72}, torch::kLong);
+    //     mask.index_put_({idx}, 1);
+
+    //     dataset.add_position(board, pi, z, mask);
+    // }
 
     AlphaZeroNetWithMask model;
-    train(model, dataset, 16, 5, 1e-3, device);
+    // train(model, dataset, 16, 5, 1e-3, device);
     torch::save(model, "checkpoint/1.pt");
     std::cout << "✅ Model saved successfully!\n";
 }

@@ -26,8 +26,8 @@ Cell_state Game::play() {
     Cell_state current_player =
             current_player_index == 0 ? Cell_state::X : Cell_state::O;
 
-    //Make 10 random move first
-    random_move(30);
+    // Make 10 random move first
+    random_move(10);
 
 
     while (board.check_winner() == Cell_state::Empty) {
@@ -40,9 +40,8 @@ Cell_state Game::play() {
         board.get_board_size();
         Cell_state current_player =
             current_player_index == 0 ? Cell_state::X : Cell_state::O;
-        if (verbose)
-            std::cout << "\nPlayer " << current_player_index + 1 << "'s turn:" << std::endl;
-            // board.display_board(std::cout);
+        std::cout << "\nPlayer " << current_player_index + 1 << "'s turn:" << std::endl;
+        board.display_board(std::cout);
         auto [chosen_move, logits] = players[current_player_index]->choose_move(board, current_player);
         // Skip if random move or human move
         if (logits.numel() > 1000) {
@@ -63,20 +62,18 @@ Cell_state Game::play() {
         int chosen_y = chosen_move[1];
         int chosen_dir = chosen_move[2];
         int chosen_tar = chosen_move[3];
-        if (verbose)
-            std::cout << "\nPlayer " << current_player_index + 1 << " chose move: " << print_move(chosen_move) << std::endl;
+        std::cout << "\nPlayer " << current_player_index + 1 << " chose move: " << print_move(chosen_move) << std::endl;
         board.make_move(chosen_x, chosen_y, chosen_dir, chosen_tar, current_player);
         if (chosen_move[3] < 1) {
             switch_player();
             board.clear_state();
         }
-        
         move_counter ++;
     }
     Cell_state winner = board.check_winner();
 
-    // board.display_board(std::cout);
-    // std::cout << "Player " << verbose << " wins!" << std::endl;
+    board.display_board(std::cout);
+    std::cout << "Player " << verbose << " wins!" << std::endl;
     
     dataset_.update_last_z(result_z, winner);
     

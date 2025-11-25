@@ -5,7 +5,8 @@
 #include <iostream>
 #include <memory>
 #include <stdexcept>
-#include <random>
+
+
 
 #include "game.h"
 #include "nn_model.h"

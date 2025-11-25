@@ -102,15 +102,15 @@ void Logger::log_root_stats(int visit_count, int win_count,
 }
 
 void Logger::log_child_node_stats(const std::array<int, 4>& move,
-                                  int win_count, int visit_count) {
+                                  float value, int visit_count) {
   std::ostringstream message;
   message << "Child node " << print_move(move)
-          << ": Wins: " << win_count << ", Visits: " << visit_count
+          << ": Value: " << std::fixed << std::setprecision(2) << value << ", Visits: " << visit_count
           << ". Win ratio: ";
 
   if (visit_count) {
     message << std::fixed << std::setprecision(2)
-            << static_cast<double>(win_count) / visit_count;
+            << static_cast<double>(value) / visit_count;
   } else {
     message << "N/A (no visits yet)";
   }

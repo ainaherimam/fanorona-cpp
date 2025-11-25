@@ -71,6 +71,7 @@ std::pair<std::array<int, 4>,torch::Tensor> Mcts_agent::choose_move(const Board&
 
   // Select the child with the highest win ratio as the best move:
   std::shared_ptr<Node> best_child = select_best_child(root);
+//   std::shared_ptr<Node> best_child2 = select_best_child(best_child);
   
   logger->log_best_child_chosen(
       mcts_iteration_counter, best_child->move,
@@ -208,10 +209,8 @@ Mcts_agent::get_moves_with_logits(const torch::Tensor& logits_tensor) const
     const int total = X * Y * DIR * TAR;
 
     torch::Tensor softmax_p = torch::exp(logits_tensor);
-    // Move tensor to CPU and flatten to 1D
     torch::Tensor logits = softmax_p.to(torch::kCPU).contiguous().view({total});
 
-    // Get pointer to raw data (fastest access)
     const float* data = logits.data_ptr<float>();
 
     std::vector<std::pair<std::array<int,4>, float>> moves;
@@ -265,6 +264,13 @@ Mcts_agent::select_child_for_playout(
         for (size_t i = 1; i < current->child_nodes.size(); i++) {
             auto& child = current->child_nodes[i];
             double score = calculate_puct_score(child, current);
+
+            /* std::cout << "Child " << i 
+              << " | Move: " << child->move[0]<< child->move[1]<<child->move[2]<<child->move[3]
+              << " | Prior Proba: " << child->prior_proba << "\n"
+              << " | PUCT Score: " << score << "\n";
+            */
+
             if (score > max_score) {
                 max_score = score;
                 best_child = child;
@@ -293,7 +299,7 @@ double Mcts_agent::calculate_puct_score(
     const std::shared_ptr<Node>& child_node,
     const std::shared_ptr<Node>& parent_node) {
 
-    return static_cast<double>(child_node->value_from_mcts + exploration_factor * child_node->prior_proba * ( std::sqrt(parent_node->visit_count) / (child_node->visit_count + 1) ));
+    return static_cast<double>(child_node->value_from_mcts + exploration_factor *child_node->prior_proba * ( std::sqrt(parent_node->visit_count) / (child_node->visit_count + 1) ));
 
   }
 
@@ -305,6 +311,7 @@ float Mcts_agent::simulate_random_playout(
 
   Cell_state winner = board.check_winner();
   if (winner == root->player) {
+      logger->log_simulation_end(1.0);
       return 1.0;   // current player won
       
   } 
@@ -314,6 +321,7 @@ float Mcts_agent::simulate_random_playout(
       return value;
   }
   else {
+      logger->log_simulation_end(-1.0);
       return -1.0;  // opponent won
   }
 
@@ -325,19 +333,20 @@ void Mcts_agent::backpropagate(std::shared_ptr<Node>& node, float value) {
   while (current_node != nullptr) {
     // Lock the node's mutex before updating its data
     std::lock_guard<std::mutex> lock(current_node->node_mutex);
+
+    if (current_node->parent_node != nullptr && 
+       current_node->parent_node->player != root->player) {
+        current_node->acc_value -= value;}
+    else{
+        current_node->acc_value += value;
+    }
     // Increment the node's visit count
     current_node->visit_count += 1;
     // Update accumulated value of the node
-    current_node->acc_value += value;
     current_node->value_from_mcts = current_node->acc_value / current_node->visit_count;
     logger->log_backpropagation_result(
         current_node->move, current_node->acc_value, current_node->visit_count);
     // Move to the parent node for the next loop
-    if (current_node->parent_node != nullptr && 
-    current_node->player != current_node->parent_node->player) {
-        value = -value;
-    }
-
     current_node = current_node->parent_node;
   }
 }

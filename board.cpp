@@ -36,6 +36,56 @@ Board::Board(int size)
         board[2][7] = Cell_state::X;
         board[2][8] = Cell_state::O;
     }
+    /* board(9, std::vector<Cell_state>(9, Cell_state::Empty)) {
+
+        board[0][0] = Cell_state::Empty;
+        board[0][1] = Cell_state::Empty;
+        board[0][2] = Cell_state::Empty;
+        board[0][3] = Cell_state::Empty;
+        board[0][4] = Cell_state::Empty;
+        board[0][5] = Cell_state::X;
+        board[0][6] = Cell_state::Empty;
+        board[0][7] = Cell_state::Empty;
+        board[0][8] = Cell_state::Empty;
+        board[1][0] = Cell_state::Empty;
+        board[1][1] = Cell_state::Empty;
+        board[1][2] = Cell_state::X;
+        board[1][3] = Cell_state::Empty;
+        board[1][4] = Cell_state::Empty;
+        board[1][5] = Cell_state::Empty;
+        board[1][6] = Cell_state::Empty;
+        board[1][7] = Cell_state::X;
+        board[1][8] = Cell_state::Empty;
+        board[2][0] = Cell_state::Empty;
+        board[2][1] = Cell_state::Empty;
+        board[2][2] = Cell_state::Empty;
+        board[2][3] = Cell_state::Empty;
+        board[2][4] = Cell_state::Empty;
+        board[2][5] = Cell_state::Empty;
+        board[2][6] = Cell_state::X;
+        board[2][7] = Cell_state::Empty;
+        board[2][8] = Cell_state::Empty;
+        board[3][0] = Cell_state::O;
+        board[3][1] = Cell_state::Empty;
+        board[3][2] = Cell_state::Empty;
+        board[3][3] = Cell_state::Empty;
+        board[3][4] = Cell_state::Empty;
+        board[3][5] = Cell_state::Empty;
+        board[3][6] = Cell_state::X;
+        board[3][7] = Cell_state::Empty;
+        board[3][8] = Cell_state::Empty;
+        board[4][0] = Cell_state::O;
+        board[4][1] = Cell_state::Empty;
+        board[4][2] = Cell_state::Empty;
+        board[4][3] = Cell_state::Empty;
+        board[4][4] = Cell_state::Empty;
+        board[4][5] = Cell_state::Empty;
+        board[4][6] = Cell_state::Empty;
+        board[4][7] = Cell_state::Empty;
+        board[4][8] = Cell_state::Empty;
+    } */
+
+
 
 
 
@@ -92,8 +142,8 @@ void Board::print_valid_moves(std::vector<std::array<int, 4>> moves) const {
     int index = 1;
     for (const auto& move : moves) {
         // Print the row as a number and the column as an alphabet
-        char column = 'a' + move[1];  // assuming move[1] is the column index (0-based)
-        int row = move[0] + 1;  // assuming move[0] is the row index (0-based)
+        char column = 'a' + move[1]; 
+        int row = move[0] + 1;  
 
         // Determine direction based on the provided value
         std::string direction;
@@ -300,7 +350,7 @@ torch::Tensor Board::to_tensor(Cell_state player) const {
     // Fill history boards in reverse order: T-1, T-2, ...
     for (size_t i = 0; i < 4; ++i) {
         int plane_index = (i + 1) * 2;
-        const auto& hist_board = history[3 - i]; // reverse order
+        const auto& hist_board = history[3 - i];
         fill_planes(stacked, plane_index, hist_board, player);
     }
 
@@ -363,27 +413,6 @@ torch::Tensor Board::get_legal_mask(Cell_state player) const {
 
     return all_moves;
 }
-
-// void Board::display_board(std::ostream& os = std::cout) const {
-//     os << "\n";
-
-//     // Loop through each cell in the board.
-//     for (size_t row = 0; row < 5; ++row) {
-//         for (size_t col = 0; col < static_cast<std::size_t>(board_size); ++col) {
-//             // Print the state of the cell.
-//             os << board[row][col] << " ";
-//         }
-//         // Print the row number at the end of each row.
-//         os << row + 1;
-//         os << "\n";
-//     }
-
-//     // Print the bottom coordinate labels
-//     for (size_t col = 0; col < static_cast<std::size_t>(board_size); ++col) {
-//         os << static_cast<char>('a' + col) << " ";
-//     }
-//     os << "\n\n";
-// }
 
 void Board::display_board(std::ostream& os) const {
     const int ROWS = 5;
