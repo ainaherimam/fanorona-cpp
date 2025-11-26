@@ -2,6 +2,7 @@
 #include "nn_model.h"
 #include <torch/torch.h>
 
+#include <chrono>
 #include <cassert>
 #include <cmath>
 #include <limits>
@@ -58,6 +59,9 @@ Mcts_agent::Node::Node(Cell_state player, std::array<int, 4> move, float prior_p
 
 std::pair<std::array<int, 4>,torch::Tensor> Mcts_agent::choose_move(const Board& board,
                                             Cell_state player) {
+  
+//   auto start = std::chrono::high_resolution_clock::now();
+
   logger->log_mcts_start(player);
   // Create a new  root node and expand it
   std::array<int, 4> arr = { -1, -1, -1, -1 };
@@ -69,6 +73,10 @@ std::pair<std::array<int, 4>,torch::Tensor> Mcts_agent::choose_move(const Board&
   perform_mcts_iterations(number_iteration, mcts_iteration_counter, board);
   logger->log_timer_ran_out(mcts_iteration_counter);
 
+//   auto end = std::chrono::high_resolution_clock::now();
+//   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+
+//   std::cout << "Time taken: " << duration << " ms" << std::endl;
   // Select the child with the highest win ratio as the best move:
   std::shared_ptr<Node> best_child = select_best_child(root);
 //   std::shared_ptr<Node> best_child2 = select_best_child(best_child);

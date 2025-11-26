@@ -36,7 +36,7 @@ Board::Board(int size)
         board[2][7] = Cell_state::X;
         board[2][8] = Cell_state::O;
     }
-    /* board(9, std::vector<Cell_state>(9, Cell_state::Empty)) {
+  /*   board(9, std::vector<Cell_state>(9, Cell_state::Empty)) {
 
         board[0][0] = Cell_state::Empty;
         board[0][1] = Cell_state::Empty;
@@ -49,7 +49,7 @@ Board::Board(int size)
         board[0][8] = Cell_state::Empty;
         board[1][0] = Cell_state::Empty;
         board[1][1] = Cell_state::Empty;
-        board[1][2] = Cell_state::X;
+        board[1][2] = Cell_state::Empty;
         board[1][3] = Cell_state::Empty;
         board[1][4] = Cell_state::Empty;
         board[1][5] = Cell_state::Empty;
@@ -60,13 +60,13 @@ Board::Board(int size)
         board[2][1] = Cell_state::Empty;
         board[2][2] = Cell_state::Empty;
         board[2][3] = Cell_state::Empty;
-        board[2][4] = Cell_state::Empty;
+        board[2][4] = Cell_state::X;
         board[2][5] = Cell_state::Empty;
-        board[2][6] = Cell_state::X;
+        board[2][6] = Cell_state::Empty;
         board[2][7] = Cell_state::Empty;
         board[2][8] = Cell_state::Empty;
-        board[3][0] = Cell_state::O;
-        board[3][1] = Cell_state::Empty;
+        board[3][0] = Cell_state::Empty;
+        board[3][1] = Cell_state::O;
         board[3][2] = Cell_state::Empty;
         board[3][3] = Cell_state::Empty;
         board[3][4] = Cell_state::Empty;
@@ -74,7 +74,7 @@ Board::Board(int size)
         board[3][6] = Cell_state::X;
         board[3][7] = Cell_state::Empty;
         board[3][8] = Cell_state::Empty;
-        board[4][0] = Cell_state::O;
+        board[4][0] = Cell_state::Empty;
         board[4][1] = Cell_state::Empty;
         board[4][2] = Cell_state::Empty;
         board[4][3] = Cell_state::Empty;

@@ -67,7 +67,7 @@ struct GameDataset : torch::data::datasets::Dataset<GameDataset> {
 // =============================================================
 struct AlphaZeroNetWithMaskImpl : torch::nn::Module {
     torch::nn::Conv2d conv_in{nullptr};
-    std::vector<torch::nn::Sequential> res_blocks;
+    torch::nn::ModuleList res_blocks{nullptr};
     torch::nn::Conv2d policy_head_conv{nullptr};
     torch::nn::Linear policy_fc{nullptr};
     torch::nn::Conv2d value_head_conv{nullptr};
@@ -78,8 +78,12 @@ struct AlphaZeroNetWithMaskImpl : torch::nn::Module {
     AlphaZeroNetWithMaskImpl(int C=11, int H_=5, int W_=9, int num_moves=1800, int channels=64, int n_blocks=6) 
         : H(H_), W(W_) {
 
-        conv_in = register_module("conv_in", torch::nn::Conv2d(torch::nn::Conv2dOptions(C, channels, 3).padding(1)));
+        conv_in = register_module("conv_in", 
+            torch::nn::Conv2d(torch::nn::Conv2dOptions(C, channels, 3).padding(1)));
 
+        // Use ModuleList for proper registration
+        res_blocks = register_module("res_blocks", torch::nn::ModuleList());
+        
         for (int i = 0; i < n_blocks; ++i) {
             auto block = torch::nn::Sequential(
                 torch::nn::Conv2d(torch::nn::Conv2dOptions(channels, channels, 3).padding(1)),
@@ -88,22 +92,29 @@ struct AlphaZeroNetWithMaskImpl : torch::nn::Module {
                 torch::nn::Conv2d(torch::nn::Conv2dOptions(channels, channels, 3).padding(1)),
                 torch::nn::BatchNorm2d(channels)
             );
-            res_blocks.push_back(register_module("resblock" + std::to_string(i), block));
+            res_blocks->push_back(block);
         }
 
-        policy_head_conv = register_module("policy_head_conv", torch::nn::Conv2d(torch::nn::Conv2dOptions(channels, 2, 1)));
-        policy_fc = register_module("policy_fc", torch::nn::Linear(2 * H * W, num_moves));
+        policy_head_conv = register_module("policy_head_conv", 
+            torch::nn::Conv2d(torch::nn::Conv2dOptions(channels, 2, 1)));
+        policy_fc = register_module("policy_fc", 
+            torch::nn::Linear(2 * H * W, num_moves));
 
-        value_head_conv = register_module("value_head_conv", torch::nn::Conv2d(torch::nn::Conv2dOptions(channels, 1, 1)));
-        value_fc1 = register_module("value_fc1", torch::nn::Linear(H * W, 64));
-        value_fc2 = register_module("value_fc2", torch::nn::Linear(64, 1));
+        value_head_conv = register_module("value_head_conv", 
+            torch::nn::Conv2d(torch::nn::Conv2dOptions(channels, 1, 1)));
+        value_fc1 = register_module("value_fc1", 
+            torch::nn::Linear(H * W, 64));
+        value_fc2 = register_module("value_fc2", 
+            torch::nn::Linear(64, 1));
     }
 
     std::pair<torch::Tensor, torch::Tensor> forward(torch::Tensor x, torch::Tensor legal_mask = torch::Tensor()) {
         x = torch::relu(conv_in->forward(x));
-        for (auto &block : res_blocks) {
+        
+        // Update loop to work with ModuleList
+        for (size_t i = 0; i < res_blocks->size(); ++i) {
             auto residual = x.clone();
-            x = block->forward(x);
+            x = res_blocks[i]->as<torch::nn::Sequential>()->forward(x);
             x = torch::relu(x + residual);
         }
 
@@ -123,7 +134,6 @@ struct AlphaZeroNetWithMaskImpl : torch::nn::Module {
         return {p, v};
     }
 
-    // ----------------- Save / Load -----------------
     void save_model(const std::string& path) {
         try {
             torch::save(shared_from_this(), path);
@@ -135,7 +145,9 @@ struct AlphaZeroNetWithMaskImpl : torch::nn::Module {
 
     static torch::nn::ModuleHolder<AlphaZeroNetWithMaskImpl> load_model(const std::string& path) {
         try {
-            auto model = std::make_shared<AlphaZeroNetWithMaskImpl>();
+            auto model = std::make_shared<AlphaZeroNetWithMaskImpl>(
+                11, 5, 9, 1800, 64, 6
+            );
             torch::load(model, path);
             return model;
         } catch (const c10::Error& e) {

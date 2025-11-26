@@ -40,7 +40,7 @@ Cell_state Game::play() {
         board.get_board_size();
         Cell_state current_player =
             current_player_index == 0 ? Cell_state::X : Cell_state::O;
-        // std::cout << "\nPlayer " << current_player_index + 1 << "'s turn:" << std::endl;
+
         // board.display_board(std::cout);
         auto [chosen_move, logits] = players[current_player_index]->choose_move(board, current_player);
         // Skip if random move or human move
@@ -58,11 +58,54 @@ Cell_state Game::play() {
 
             dataset_.add_position(board_tensor, pi_tensor, z_tensor, mask_tensor);
         }
+
         int chosen_x = chosen_move[0];
         int chosen_y = chosen_move[1];
         int chosen_dir = chosen_move[2];
         int chosen_tar = chosen_move[3];
-        // std::cout << "\nPlayer " << current_player_index + 1 << " chose move: " << print_move(chosen_move) << std::endl;
+
+        board.make_move(chosen_x, chosen_y, chosen_dir, chosen_tar, current_player);
+        if (chosen_move[3] < 1) {
+            switch_player();
+            board.clear_state();
+        }
+        move_counter ++;
+    }
+
+    Cell_state winner = board.check_winner();
+    dataset_.update_last_z(result_z, winner);
+    
+    return winner;
+}
+
+Cell_state Game::simple_play() {
+
+    int move_counter = 0;
+    int max_move = 70;
+
+    Cell_state current_player =
+            current_player_index == 0 ? Cell_state::X : Cell_state::O;
+
+    while (board.check_winner() == Cell_state::Empty) {
+
+
+        if (move_counter>max_move){
+            break;
+        }
+
+        board.get_board_size();
+        Cell_state current_player = current_player_index == 0 ? Cell_state::X : Cell_state::O;
+
+        std::cout << "\nPlayer " << current_player_index + 1 << "'s turn:" << std::endl;
+        board.display_board(std::cout);
+
+        auto [chosen_move, logits] = players[current_player_index]->choose_move(board, current_player);
+
+        int chosen_x = chosen_move[0];
+        int chosen_y = chosen_move[1];
+        int chosen_dir = chosen_move[2];
+        int chosen_tar = chosen_move[3];
+        std::cout << "\nPlayer " << current_player_index + 1 << " chose move: " << print_move(chosen_move) << std::endl;
         board.make_move(chosen_x, chosen_y, chosen_dir, chosen_tar, current_player);
         if (chosen_move[3] < 1) {
             switch_player();
@@ -72,10 +115,8 @@ Cell_state Game::play() {
     }
     Cell_state winner = board.check_winner();
 
-    // board.display_board(std::cout);
-    // std::cout << "Player " << verbose << " wins!" << std::endl;
-    
-    dataset_.update_last_z(result_z, winner);
+    board.display_board(std::cout);
+    std::cout << "Player " << winner << " wins!" << std::endl;
     
     return winner;
 }

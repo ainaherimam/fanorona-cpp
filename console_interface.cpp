@@ -144,14 +144,14 @@ void start_match_against_robot() {
 
     if (human_player_number == 1) {
         Game game(board_size, std::move(human_player), std::move(mcts_agent), dataset);
-        game.play();
+        game.simple_play();
     }
     else {
         if (mcts_agent->get_is_verbose()) {
             countdown(3);
         }
         Game game(board_size, std::move(mcts_agent), std::move(human_player), dataset);
-        game.play();
+        game.simple_play();
     }
 }
 
@@ -163,7 +163,7 @@ void start_robot_arena() {
     auto mcts_agent_2 = create_mcts_agent("second agent");
 
     Game game(board_size, std::move(mcts_agent_1), std::move(mcts_agent_2), dataset);
-    game.play();
+    game.simple_play();
 }
 
 
@@ -172,17 +172,18 @@ void generate_data() {
   torch::Device device(torch::kCUDA);
   if (!torch::cuda::is_available()) device = torch::kCPU;
   
-  int data_number = 512;
-  GameDataset dataset(data_number);
+  int data_number = 2048;
+  
 
   AlphaZeroNetWithMask model;
 
   std::cout << "🌱 Starting self-play...\n";
 
-  int cycles = 20;
+  int cycles = 10;
   int game_counter = 0;
   for (int iter = 1; iter <= cycles; ++iter) {
 
+      GameDataset dataset(data_number);
       std::cout << "\n=============================\n";
       std::cout << "🔁 TRAINING CYCLE " << iter << "\n";
       std::cout << "=============================\n\n";
@@ -190,11 +191,11 @@ void generate_data() {
 
       // --- 1. SELF-PLAY PHASE ---
       while (dataset.current_size < data_number) {
-          Game game(9, std::make_unique<Mcts_player>(2, 500, false), std::make_unique<Mcts_player>(2, 500, false), dataset, true);
+          Game game(9, std::make_unique<Mcts_player>(2, 1000, false), std::make_unique<Mcts_player>(2, 1000, false), dataset, true);
           Cell_state winner = game.play();
           game_counter++;
           std::cout <<game_counter<<" Games completed - Stored positions: " 
-                    << dataset.current_size << "/512 - Player " << winner << " won\n"; 
+                    << dataset.current_size << "/"+std::to_string(2048)+" - Player " << winner << " won\n"; 
       }
 
       std::cout << "✅ Replay buffer ready (" 
@@ -203,7 +204,7 @@ void generate_data() {
       // --- 2. TRAINING PHASE ---
       std::cout << "🎯 Training model...\n";
       train(model, dataset, 128, 5, 1e-3, device);
-
+      torch::save(model, "checkpoint/"+std::to_string(iter+2)+".pt");
 
   }
 }
@@ -242,7 +243,7 @@ void start_human_arena() {
   auto human_player_1 = std::make_unique<Human_player>();
   auto human_player_2 = std::make_unique<Human_player>();
   Game game(board_size, std::move(human_player_1), std::move(human_player_2), dataset);
-  game.play();
+  game.simple_play();
 }
 
 void run_console_interface() {
