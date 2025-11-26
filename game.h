@@ -46,6 +46,7 @@ class Game {
    winner.
    */
   Cell_state play();
+  Cell_state simple_play();
 
  private:
   Board board; 

@@ -16,7 +16,6 @@ NeuralN::NeuralN(const std::string& model_path, torch::Device device_)
     : device(device_)
 {
     try {
-        // Load the model once
         model = AlphaZeroNetWithMaskImpl::load_model(model_path);
         model->to(device);
         model->eval();
@@ -57,6 +56,27 @@ Mcts_agent::Node::Node(Cell_state player, std::array<int, 4> move, float prior_p
       child_nodes(),
       parent_node(parent_node) {}
 
+
+std::vector<float> Mcts_agent::generate_dirichlet_noise(int num_moves, float alpha) {
+  if (num_moves == 0) return {};
+  
+  std::gamma_distribution<float> gamma_dist(alpha, 1.0);
+  std::vector<float> noise(num_moves);
+  float noise_sum = 0.0;
+  
+  // Generate gamma samples
+  for (int i = 0; i < num_moves; ++i) {
+    noise[i] = gamma_dist(rng_);
+    noise_sum += noise[i];
+  }
+  
+  // Normalize to sum to 1
+  for (int i = 0; i < num_moves; ++i) {
+    noise[i] /= noise_sum;
+  }
+  return noise;
+}
+      
 std::pair<std::array<int, 4>,torch::Tensor> Mcts_agent::choose_move(const Board& board,
                                             Cell_state player) {
   
@@ -66,7 +86,9 @@ std::pair<std::array<int, 4>,torch::Tensor> Mcts_agent::choose_move(const Board&
   // Create a new  root node and expand it
   std::array<int, 4> arr = { -1, -1, -1, -1 };
   root = std::make_shared<Node>(player, arr, 0.0, 0.0, nullptr);
-  initiate_and_run_nn(root, board);
+
+  //Initialize root with Dirichlet noise for exploration
+  initiate_and_run_nn(root, board, true, 0.5f, 0.3f);
 
   int mcts_iteration_counter =0;
   // Run MCTS until the timer runs out
@@ -99,7 +121,6 @@ void Mcts_agent::random_move(Board& board, Cell_state player, int random_move_nu
         if (valid_moves.empty()) {
             break; 
         }
-
         std::uniform_int_distribution<> dist(0, static_cast<int>(valid_moves.size() - 1));
         std::array<int, 4> random_move = valid_moves[dist(random_generator)];
 
@@ -120,39 +141,50 @@ void Mcts_agent::random_move(Board& board, Cell_state player, int random_move_nu
 
 
 float Mcts_agent::initiate_and_run_nn(const std::shared_ptr<Node>& node,
-                             const Board& board) {
-
+                                      const Board& board,
+                                      bool add_dirichlet_noise = false,
+                                      float dirichlet_alpha = 0.4,
+                                      float exploration_fraction = 0.25) {
   Cell_state current_player = node->player;
   Cell_state actual_player = node->player;
-
-  torch::Tensor input = board.to_tensor(current_player).unsqueeze(0);
-  torch::Tensor legal_mask = board.get_legal_mask(current_player).unsqueeze(0);  
-
-  auto [policy, value] = agent->predict(input, legal_mask);
-
-  std::vector<std::pair<std::array<int,4>, float>> move_with_logit = get_moves_with_logits(policy);
   
-  // For each valid move, create a new child node and add it to the node's
-  // children.
-  for (const auto& [move, logit] : move_with_logit) {
-    
-    if (move[3] < 1) {
-      // Switch player
-      actual_player = (current_player == Cell_state::X ? Cell_state::O : Cell_state::X);
+  torch::Tensor input = board.to_tensor(current_player).unsqueeze(0);
+  torch::Tensor legal_mask = board.get_legal_mask(current_player).unsqueeze(0);
+  
+  auto [policy, value] = agent->predict(input, legal_mask);
+  
+  std::vector<std::pair<std::array<int,4>, float>> move_with_logit = get_moves_with_probs(policy);
+  
+  std::vector<float> noise;
+  if (add_dirichlet_noise && !move_with_logit.empty()) {
+    noise = generate_dirichlet_noise(move_with_logit.size(), dirichlet_alpha);
+      
+    for (size_t i = 0; i < move_with_logit.size(); ++i) {
+      move_with_logit[i].second = (1.0 - exploration_fraction) * move_with_logit[i].second + 
+                                   exploration_fraction * noise[i];
     }
-    else{
+  }
+  
+  // For each valid move, create a new child node
+  int idx = 0;
+  for (const auto& [move, logit] : move_with_logit) {
+    if (move[3] < 1) {
+      actual_player = (current_player == Cell_state::X ? Cell_state::O : Cell_state::X);
+    } else {
       actual_player = current_player;
     }
+    
     std::shared_ptr<Node> new_child =
         std::make_shared<Node>(actual_player, std::array<int, 4>(move), logit, 0.0, node);
     node->child_nodes.push_back(new_child);
-    node->value_from_nn =  value.item<float>();
-    node->expanded = true;
+    idx++;
   }
-
+  
+  node->value_from_nn = value.item<float>();
+  node->expanded = true;
+  
   return value.item<float>();
 }
-
 
 void Mcts_agent::perform_mcts_iterations(
     int number_iteration,
@@ -208,7 +240,7 @@ torch::Tensor Mcts_agent::get_policy_logits(const std::shared_ptr<Node>& parent_
 }
 
 std::vector<std::pair<std::array<int,4>, float>>
-Mcts_agent::get_moves_with_logits(const torch::Tensor& logits_tensor) const 
+Mcts_agent::get_moves_with_probs(const torch::Tensor& log_probs_tensor) const 
 {
     const int X = 5;
     const int Y = 10;
@@ -216,40 +248,35 @@ Mcts_agent::get_moves_with_logits(const torch::Tensor& logits_tensor) const
     const int TAR = 4;
     const int total = X * Y * DIR * TAR;
 
-    torch::Tensor softmax_p = torch::exp(logits_tensor);
-    torch::Tensor logits = softmax_p.to(torch::kCPU).contiguous().view({total});
-
-    const float* data = logits.data_ptr<float>();
+    torch::Tensor probs = torch::exp(log_probs_tensor).to(torch::kCPU).contiguous().view({total});
+    const float* data = probs.data_ptr<float>();
 
     std::vector<std::pair<std::array<int,4>, float>> moves;
-    moves.reserve(total);  
+    moves.reserve(total);
+
+    float sum = 0.0f;
 
     for (int idx = 0; idx < total; idx++) {
-
-        float logit = data[idx];
-        if (logit == 0.0f)
-            continue;               
-
+        float p = data[idx];
+        if (p <= 0.0f)
+            continue;
 
         int t = idx;
-
         int x = t / (Y * DIR * TAR); 
         t %= (Y * DIR * TAR);
-
         int y = t / (DIR * TAR);
         t %= (DIR * TAR);
-
-        int dir_idx = t / TAR;
-        int tar_idx = t % TAR;
-
-        int dir = dir_idx + 1;      
-        int tar = tar_idx - 1;      
+        int dir = (t / TAR) + 1;
+        int tar = (t % TAR) - 1;
 
         std::array<int,4> move = { x, y, dir, tar };
-
-        moves.emplace_back(move, logit);
+        moves.emplace_back(move, p);
+        sum += p;
     }
 
+    for (auto& m : moves) {
+        m.second /= sum;
+    }
 
     return moves;
 }

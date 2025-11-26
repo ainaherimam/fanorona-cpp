@@ -106,6 +106,7 @@ class Mcts_agent {
   double exploration_factor;
   int number_iteration;
   bool is_verbose = false;
+  std::mt19937 rng_;
 
   // Logging
   std::shared_ptr<Logger> logger;
@@ -221,8 +222,14 @@ class Mcts_agent {
    @param node A shared_ptr to the node to be expanded.
    @param board The current game state.
    */
+  float initiate_and_run_nn(const std::shared_ptr<Node>& node, 
+                            const Board& board,
+                            bool add_dirichlet_noise,
+                            float dirichlet_alpha,
+                            float exploration_fraction);
 
-  float initiate_and_run_nn(const std::shared_ptr<Node>& node, const Board& board);
+  std::vector<float> generate_dirichlet_noise(int num_moves, 
+                                              float alpha);
 
   /*
    @brief Runs the main loop of Monte Carlo Tree Search (MCTS).
@@ -240,7 +247,7 @@ class Mcts_agent {
       const int number_iteration,
       int& mcts_iteration_counter, const Board& board);
 
-
+  
   /*
    @brief Computes the policy logits tensor for a given parent node.
 
@@ -271,7 +278,7 @@ class Mcts_agent {
   @return A vector of pairs, where each pair contains a move array {x, y, dir, tar} and its logit value.
 */
 
-  std::vector<std::pair<std::array<int,4>, float>> get_moves_with_logits(const torch::Tensor& logits_tensor) const;
+  std::vector<std::pair<std::array<int,4>, float>> get_moves_with_probs(const torch::Tensor& log_probs_tensor) const;
    /*
    @brief Selects the best child of a given parent node based on the Upper
    Confidence Bound for Trees (UCT) score.
