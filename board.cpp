@@ -141,39 +141,39 @@ void remove_on_vector(std::vector<std::array<int, 4>>& valid_moves, int threshol
 void Board::print_valid_moves(std::vector<std::array<int, 4>> moves) const {
     int index = 1;
     for (const auto& move : moves) {
-        // Print the row as a number and the column as an alphabet
-        char column = 'a' + move[1]; 
-        int row = move[0] + 1;  
 
-        // Determine direction based on the provided value
+        char column = 'A' + move[1];   // Uppercase column
+        int row = move[0] + 1;
+
         std::string direction;
         switch (move[2]) {
-        case 1: direction = "Move downleft "; break;
-        case 2: direction = "Move down     "; break;
-        case 3: direction = "Move downright"; break;
-        case 4: direction = "Move left     "; break;
-        case 5: direction = "Stay     "; break;
-        case 6: direction = "Move right    "; break;
-        case 7: direction = "Moveupleft   "; break;
-        case 8: direction = "Move up       "; break;
-        case 9: direction = "Move upright  "; break;
-        default: direction = "unknown"; break;
+            case 1: direction = "↙"; break;
+            case 2: direction = "↓"; break;
+            case 3: direction = "↘"; break;
+            case 4: direction = "←"; break;
+            case 5: direction = "•"; break;  // no movement
+            case 6: direction = "→"; break;
+            case 7: direction = "↖"; break;
+            case 8: direction = "↑"; break;
+            case 9: direction = "↗"; break;
+            default: direction = "?"; break;
         }
 
-        // Determine move type
         std::string move_type;
         switch (move[3]) {
-        case -1: move_type = ""; break;
-        case 0: move_type = ""; break;
-        case 1: move_type = "and take backward"; break;
-        case 2: move_type = "and take forward"; break;
-        default: move_type = "unknown"; break;
+            case 1: move_type = "Withdrawal"; break;
+            case 2: move_type = "Approach"; break;
+            default: move_type = ""; break;
         }
 
-        std::cout << index << "-"
-            << "From (" << row << ", " << column << ") "
-            << direction << " "
-            << move_type << "\n";
+        std::ostringstream oss;
+        oss << "(" << row << column << ") - " << direction << " ";
+
+        if (!move_type.empty()) {
+            oss << move_type << " Capture";
+        }
+
+        std::cout << index << " - " << oss.str() << "\n";
         index++;
     }
 }
@@ -404,10 +404,10 @@ void Board::display_board(std::ostream& os) const {
     const int ROWS = 5;
     const int COLS = board_size;
 
-    os << "      ";
+    os << "    ";
     for (int c = 0; c < COLS; ++c)
-        os << static_cast<char>('A' + c) << "  ";
-    os << "\n";
+        os << static_cast<char>('A' + c) << "   ";
+    os << "\n \n";
 
     for (int r = 0; r < ROWS; ++r) {
         int rr = r; 
@@ -420,7 +420,7 @@ void Board::display_board(std::ostream& os) const {
         }
         os << "\n";
 
-        if (rr >= 0) {
+        if (rr < ROWS - 1) {
             os << "    ";
 
             bool row_even = (rr % 2 == 0);  
@@ -428,20 +428,12 @@ void Board::display_board(std::ostream& os) const {
             for (int c = 0; c < COLS - 1; ++c) {
                 bool col_even = (c % 2 == 0);
 
-                std::string slash;
-                if (rr==4) {
+                std::string slash =
+                    row_even
+                        ? (col_even ? " ╲ " : " ╱ ")
+                        : (col_even ? " ╱ " : " ╲ ");
 
-                    slash = "";
-                } else if (row_even){
-                     slash = col_even ? " ╲ " : " ╱ ";
-                     os << "│" << slash << "";   
-                }
-                else{
-                    slash = col_even ? " ╱ " : " ╲ ";
-                    os << "│" << slash << "";   
-                }
-
-                
+                os << "│" << slash;
             }
 
             os << "│\n";

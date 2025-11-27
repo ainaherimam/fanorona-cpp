@@ -5,6 +5,7 @@
 #include <utility>
 
 #include "board.h"
+#include "logger.h"
 #include <torch/torch.h>
 
 /**
@@ -57,7 +58,7 @@ class Human_player : public Player {
  * during a game
  *
  * The choose_move() function selects the best move based on MCTS,
- * considering an exploration factor, max iteration number, and verbose logging.
+ * considering an exploration factor, max iteration number, and level of logging.
  */
 class Mcts_player : public Player {
  public:
@@ -66,11 +67,11 @@ class Mcts_player : public Player {
    *
    * @param exploration_factor Exploration factor for MCTS
    * @param number_iteration Maximum iteration number
-   * @param is_verbose Enables verbose logging if true
+   * @param log_level Log Level
    */
   Mcts_player(double exploration_factor,
               int number_iteration,
-              bool is_verbose = false);
+              LogLevel log_level = LogLevel::NONE);
 
   /**
    * @brief Implementation of the choose_move function for the Mcts_player class
@@ -85,16 +86,16 @@ class Mcts_player : public Player {
       Cell_state player) override;
 
   /**
-   * @brief Getter for the is_verbose private member of the Mcts_player class
+   * @brief Getter for verbose level private member of the Mcts_player class
    *
-   * @return The value of is_verbose
+   * @return The verbose level
    */
-  bool get_is_verbose() const;
+  LogLevel get_verbose_level() const;
 
  private:
   double exploration_factor;  // The exploration factor used in MCTS
   int number_iteration;       // The maximum number of iterations
-  bool is_verbose;            // If true, enables verbose logging to console
+  LogLevel log_level;            // Verbose level
 };
 
 #endif

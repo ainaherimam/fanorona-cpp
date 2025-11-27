@@ -58,11 +58,11 @@ public:
      *
      * @param exploration_factor The constant controlling exploration vs exploitation in the PUCT formula
      * @param number_iteration Maximum number of MCTS simulations to perform
-     * @param is_verbose If true, enables detailed logging to console using the Logger class
+     * @param log_level The level of log that we need (0 to 6)
      */
     Mcts_agent(double exploration_factor,
                int number_iteration,
-               bool is_verbose = false);
+               LogLevel log_level = LogLevel::NONE);
 
     /**
      * @brief Selects the best move using Monte Carlo Tree Search (MCTS)
@@ -72,7 +72,7 @@ public:
      * for the specified number of iterations, then selects the best child based
      * on visit counts.
      *
-     * If verbose mode is enabled, logs MCTS statistics.
+     * Verbose mode based on levels to log MCTS statistics.
      *
      * @param board Current game state
      * @param player The player making the move
@@ -99,7 +99,7 @@ private:
     std::shared_ptr<NeuralN> agent;
     double exploration_factor;
     int number_iteration;
-    bool is_verbose;
+    LogLevel log_level;
     std::shared_ptr<Logger> logger;
     std::random_device random_device;
     std::mt19937 random_generator;
@@ -219,7 +219,7 @@ private:
      *
      * Executes the main MCTS loop for a specified number of iterations.
      * Each iteration selects, expands, simulates (via NN), and backpropagates.
-     * Logs statistics if verbose mode is enabled.
+     * Logs statistics according to verbose mode level
      *
      * @param number_iteration Number of MCTS simulations to run
      * @param mcts_iteration_counter Reference to iteration counter for logging
@@ -295,7 +295,7 @@ private:
      * until a terminal state is reached. Used for evaluation when neural
      * network guidance is not available.
      *
-     * If verbose mode is enabled, logs simulation details via Logger.
+     * Logs statistics according to verbose mode level
      *
      * @param node Node at which to start selection
      * @param board Board state to simulate from (copied, original unchanged)

@@ -43,17 +43,17 @@ std::pair<std::array<int, 4>,torch::Tensor> Human_player::choose_move(const Boar
 
 Mcts_player::Mcts_player(double exploration_factor,
                          int number_iteration,
-                         bool is_verbose)
+                         LogLevel log_level)
     : exploration_factor(exploration_factor),
       number_iteration(number_iteration),
-      is_verbose(is_verbose) {}
+      log_level(log_level) {}
 
 std::pair<std::array<int, 4>,torch::Tensor> Mcts_player::choose_move(const Board& board,
                                              Cell_state player) {
 
-  Mcts_agent agent(exploration_factor, number_iteration, is_verbose);
+  Mcts_agent agent(exploration_factor, number_iteration, log_level);
 
   return agent.choose_move(board, player);
 }
 
-bool Mcts_player::get_is_verbose() const { return is_verbose; }
+LogLevel Mcts_player::get_verbose_level() const { return log_level; }

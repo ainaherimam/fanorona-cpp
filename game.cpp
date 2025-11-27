@@ -96,7 +96,7 @@ Cell_state Game::simple_play() {
         board.get_board_size();
         Cell_state current_player = current_player_index == 0 ? Cell_state::X : Cell_state::O;
 
-        std::cout << "\nPlayer " << current_player_index + 1 << "'s turn:" << std::endl;
+        std::cout << "\nPlayer " << current_player_index + 1 << "'s turn:" << std::endl << std::endl;
         board.display_board(std::cout);
 
         auto [chosen_move, logits] = players[current_player_index]->choose_move(board, current_player);

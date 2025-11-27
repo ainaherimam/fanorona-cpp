@@ -7,6 +7,7 @@
 #include "board.h"
 #include "mcts_agent.h"
 #include "nn_model.h"
+#include "logger.h"
 
 
 bool is_integer(const std::string& s) {
@@ -103,21 +104,19 @@ std::unique_ptr<Mcts_player> create_mcts_agent(
     std::cout << "\nInitializing " << agent_prompt << ":\n";
 
     int max_iteration = get_parameter_within_bounds(
-        "Max iteration number (at least 10) : ", 0, INT_MAX);
+        "Max iteration number (at least 10) : ", 10, INT_MAX);
 
     double exploration_constant = 1.41;
 
     exploration_constant = get_parameter_within_bounds(
         "Enter exploration constant (between 0.1 and 2): ", 0.1, 2.0);
 
-    bool is_verbose = false;
+    LogLevel log_level = LogLevel::NONE;
 
-    is_verbose = (get_yes_or_no_response(
-            "Would you like to enable verbose mode? (y/n): ") == 'y');
-
+    log_level = static_cast<LogLevel>(get_parameter_within_bounds("Log Level (0:None  -- 5:Full)  : ", 0, 5));
     return std::make_unique<Mcts_player>(
         exploration_constant, max_iteration,
-        is_verbose);
+        log_level);
 }
 
 void countdown(int seconds) {
@@ -147,9 +146,6 @@ void start_match_against_robot() {
         game.simple_play();
     }
     else {
-        if (mcts_agent->get_is_verbose()) {
-            countdown(3);
-        }
         Game game(board_size, std::move(mcts_agent), std::move(human_player), dataset);
         game.simple_play();
     }
@@ -191,7 +187,7 @@ void generate_data() {
 
       // --- 1. SELF-PLAY PHASE ---
       while (dataset.current_size < data_number) {
-          Game game(9, std::make_unique<Mcts_player>(2, 1000, false), std::make_unique<Mcts_player>(2, 1000, false), dataset, true);
+          Game game(9, std::make_unique<Mcts_player>(2, 1000, LogLevel::NONE), std::make_unique<Mcts_player>(2, 1000, LogLevel::NONE), dataset, true);
           Cell_state winner = game.play();
           game_counter++;
           std::cout <<game_counter<<" Games completed - Stored positions: " 

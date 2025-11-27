@@ -12,6 +12,8 @@
 
 #include "mcts_agent.h"
 #include "nn_model.h"
+#include "logger.h"
+
 
 NeuralN::NeuralN(const std::string& model_path, torch::Device device_) : device(device_) {
     try {
@@ -30,10 +32,10 @@ std::pair<torch::Tensor, torch::Tensor> NeuralN::predict(torch::Tensor input, to
     return model->forward(input, legal_mask);
 }
 
-Mcts_agent::Mcts_agent(double exploration_factor, int number_iteration, bool is_verbose)
+Mcts_agent::Mcts_agent(double exploration_factor, int number_iteration, LogLevel log_level)
     : exploration_factor(exploration_factor),
       number_iteration(number_iteration),
-      logger(Logger::instance(is_verbose)),
+      logger(Logger::instance(log_level)),
       random_generator(random_device()) {
     agent = std::make_shared<NeuralN>("checkpoint/1.pt");
 }
@@ -85,20 +87,25 @@ std::pair<std::array<int, 4>, torch::Tensor> Mcts_agent::choose_move(const Board
     int mcts_iteration_counter = 0;
     // Run MCTS until the timer runs out
     perform_mcts_iterations(number_iteration, mcts_iteration_counter, board);
+
     logger->log_timer_ran_out(mcts_iteration_counter);
+    logger->log_root_stats(root->visit_count, root->child_nodes.size());
 
-    //   auto end = std::chrono::high_resolution_clock::now();
-    //   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
-
-    //   std::cout << "Time taken: " << duration << " ms" << std::endl;
-    // Select the child with the highest win ratio as the best move:
     std::shared_ptr<Node> best_child = select_best_child(root);
-    //   std::shared_ptr<Node> best_child2 = select_best_child(best_child);
 
-    logger->log_best_child_chosen(mcts_iteration_counter, best_child->move,
-                                  static_cast<double>(best_child->acc_value) / best_child->visit_count);
+    logger->log_best_child_chosen(mcts_iteration_counter, best_child->move, best_child->value_from_mcts , best_child->visit_count);
     logger->log_mcts_end();
-    return {best_child->move, get_policy_logits(root)};
+
+    for (const auto& child : root->child_nodes) {
+        float avg_value = (child->visit_count > 0) ? 
+            child->acc_value / child->visit_count : 0.0f;
+            logger->log_child_node_stats(child->move, child->acc_value, 
+                                     child->visit_count, child->prior_proba);
+    }
+
+    torch::Tensor policy_from_mcts = get_policy_logits(root);
+
+    return {best_child->move, policy_from_mcts};
 }
 
 void Mcts_agent::random_move(Board& board, Cell_state player, int random_move_number) {
@@ -137,7 +144,11 @@ float Mcts_agent::initiate_and_run_nn(const std::shared_ptr<Node>& node, const B
 
     auto [policy, value] = agent->predict(input, legal_mask);
 
+    
+
     std::vector<std::pair<std::array<int, 4>, float>> move_with_logit = get_moves_with_probs(policy);
+    
+    logger->log_nn_evaluation(node->move, value.item<float>(), move_with_logit.size());
 
     std::vector<float> noise;
     if (add_dirichlet_noise && !move_with_logit.empty()) {
@@ -147,6 +158,8 @@ float Mcts_agent::initiate_and_run_nn(const std::shared_ptr<Node>& node, const B
             move_with_logit[i].second =
                 (1.0 - exploration_fraction) * move_with_logit[i].second + exploration_fraction * noise[i];
         }
+
+        logger->log_dirichlet_noise_applied(dirichlet_alpha, exploration_fraction);
     }
 
     // For each valid move, create a new child node
@@ -164,6 +177,7 @@ float Mcts_agent::initiate_and_run_nn(const std::shared_ptr<Node>& node, const B
         idx++;
     }
 
+    logger->log_expansion(node->move, node->child_nodes.size());
     node->value_from_nn = value.item<float>();
     node->expanded = true;
 
@@ -175,13 +189,18 @@ void Mcts_agent::perform_mcts_iterations(int number_iteration, int& mcts_iterati
     while (mcts_iteration_counter < number_iteration) {
         logger->log_iteration_number(mcts_iteration_counter + 1);
 
+        logger->log_step("START SELECTION FROM", root->move);
         auto [chosen_child, new_board] = select_child_for_playout(root, board);
-        float value_from_nn = simulate_random_playout(chosen_child, new_board);
-        backpropagate(chosen_child, value_from_nn);
+        logger->log_step("SELECTED", chosen_child->move);
 
-        logger->log_root_stats(root->visit_count, root->acc_value, root->child_nodes.size());
+        float value_from_nn = simulate_random_playout(chosen_child, new_board);
+
+        logger->log_step("BACKPROPAGATION", chosen_child->move);
+        backpropagate(chosen_child, value_from_nn);
+        
+        logger->log_step("FINAL STATS", chosen_child->move);
         for (const auto& child : root->child_nodes) {
-            logger->log_child_node_stats(child->move, child->acc_value, child->visit_count);
+            logger->log_child_node_stats(child->move, child->acc_value, child->visit_count, child->prior_proba);
         }
         mcts_iteration_counter++;
     }
@@ -268,12 +287,11 @@ std::pair<std::shared_ptr<Mcts_agent::Node>, Board> Mcts_agent::select_child_for
             auto& child = current->child_nodes[i];
             double score = calculate_puct_score(child, current);
 
-            /* std::cout << "Child " << i
-              << " | Move: " << child->move[0]<< child->move[1]<<child->move[2]<<child->move[3]
-              << " | Prior Proba: " << child->prior_proba << "\n"
-              << " | PUCT Score: " << score << "\n";
-            */
-
+            float q_value = child->acc_value / child->visit_count;
+            float u_value = score - q_value;
+            logger->log_puct_details(child->move, q_value, u_value,
+                                        child->prior_proba, child->visit_count,
+                                        current->visit_count);
             if (score > max_score) {
                 max_score = score;
                 best_child = child;
@@ -339,7 +357,11 @@ void Mcts_agent::backpropagate(std::shared_ptr<Node>& node, float value) {
         current_node->visit_count += 1;
         // Update accumulated value of the node
         current_node->value_from_mcts = current_node->acc_value / current_node->visit_count;
-        logger->log_backpropagation_result(current_node->move, current_node->acc_value, current_node->visit_count);
+
+        logger->log_backpropagation_result(current_node->move, 
+                                    current_node->acc_value,
+                                    current_node->visit_count);
+
         // Move to the parent node for the next loop
         current_node = current_node->parent_node;
     }
@@ -348,11 +370,10 @@ void Mcts_agent::backpropagate(std::shared_ptr<Node>& node, float value) {
 std::shared_ptr<Mcts_agent::Node> Mcts_agent::select_best_child(std::shared_ptr<Node>& node) {
     double max_win_ratio = -1.;
     std::shared_ptr<Node> best_child;
-    // loop over the child nodes of the root to find the one with the highest win ratio
+
     for (const auto& child : node->child_nodes) {
         double win_ratio = static_cast<double>(child->acc_value) / child->visit_count;
-        // Print the win ratio for each child node.
-        logger->log_node_win_ratio(child->move, child->acc_value, child->visit_count);
+
         if (win_ratio > max_win_ratio) {
             max_win_ratio = win_ratio;
             best_child = child;
@@ -360,7 +381,7 @@ std::shared_ptr<Mcts_agent::Node> Mcts_agent::select_best_child(std::shared_ptr<
     }
     if (!best_child) {
         throw std::runtime_error(
-            "Statistics are not enough to determine a move. The robot had insufficient time for the given board size.");
+            "Statistics are not enough to determine a move. The AI had insufficient time for the given board size.");
     }
     return best_child;
 }

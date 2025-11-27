@@ -3,190 +3,245 @@
 // Initialize static member
 std::shared_ptr<Logger> Logger::logger = nullptr;
 
-std::shared_ptr<Logger> Logger::instance(bool is_verbose) {
-  if (!logger) {
-    logger = std::make_shared<Logger>(is_verbose);
-  }
-  return logger;
+std::shared_ptr<Logger> Logger::instance(LogLevel level) {
+    if (!logger) {
+        logger = std::shared_ptr<Logger>(new Logger(level));
+    }
+    return logger;
 }
 
-void Logger::log(const std::string& message, bool always_print = false) {
-  if (is_verbose || always_print) {
-    // Lock the mutex to prevent interleaved output
-    std::lock_guard<std::mutex> lock(mutex);
-    std::cout << message << std::endl;
-  }
+void Logger::log(const std::string& message) {
+    if (log_level != LogLevel::NONE) {
+        std::lock_guard<std::mutex> lock(mutex);
+        std::cout << message << std::endl;
+    }
+}
+
+bool Logger::should_log(LogLevel required_level) const {
+    return static_cast<int>(log_level) >= static_cast<int>(required_level);
 }
 
 void Logger::log_mcts_start(Cell_state player) {
-  std::ostringstream message;
-  if (get_verbosity()) {
-    message << "\n-------------MCTS VERBOSE START - " << player
-            << " to move-------------\n";
-    log(message.str());
-  }
+    if (should_log(LogLevel::STEPS_ONLY)) {
+        std::ostringstream message;
+        message << "\n=============MCTS START - " << player
+                << " to move=============\n";
+        log(message.str());
+    }
+}
+
+void Logger::log_mcts_end() {
+    if (should_log(LogLevel::STEPS_ONLY)) {
+        log("\n=============MCTS END=============\n");
+    }
 }
 
 void Logger::log_iteration_number(int iteration_number) {
-  std::ostringstream message;
-  message << "\n------------------STARTING SIMULATION " << iteration_number
-          << "------------------\n";
-  log(message.str());
+    if (should_log(LogLevel::STEPS_ONLY)) {
+        std::ostringstream message;
+        message << "\n--- ITERATION " << iteration_number << " ---\n";
+        log(message.str());
+    }
 }
 
-void Logger::log_selected_child(const std::array<int, 4>& move,
-                                double uct_score) {
-  std::ostringstream message;
-  message << "SELECTED CHILD " << print_move(move)
-          << " with PUCT of ";
-  if (uct_score == std::numeric_limits<double>::max()) {
-    message << "infinity";
-  } else {
-    message << std::setprecision(4) << uct_score;
-  }
-  log(message.str());
+void Logger::log_step(const std::string& step_name, const std::array<int, 4>& move) {
+    if (should_log(LogLevel::STEPS_ONLY)) {
+      std::ostringstream message;
+      if (move[0]<0){
+        message << "[" << step_name << "] Node: ROOT";
+      }
+      else{
+        message << "[" << step_name << "] Node: " << print_move(move);
+        
+      }
+      log(message.str());
+    }
 }
 
-void Logger::log_simulation_start(const std::array<int, 4>& move,
-                                  const Board& board) {
-  if (is_verbose) {
-    std::ostringstream message;
-    std::ostringstream board_string;
-    board.display_board(board_string);
-    message << "\nSIMULATING A RANDOM PLAYOUT from node " << print_move(move) 
-            << ". Simulation board is in state:\n"
-            << board_string.str();
-    log(message.str());
-  }
+void Logger::log_nn_evaluation(const std::array<int, 4>& move, float value_from_nn, int num_legal_moves) {
+    if (should_log(LogLevel::STEPS_ONLY)) {
+        std::ostringstream message;
+        message << "[EVALUATION]" <<" Value from NN=" << std::fixed << std::setprecision(2) 
+                << value_from_nn << ", Number of Legal Moves=" << num_legal_moves;
+        log(message.str());
+    }
+}
+
+void Logger::log_expansion(const std::array<int, 4>& move, int num_children) {
+    if (should_log(LogLevel::STEPS_ONLY)) {
+        std::ostringstream message;
+        message << "  Inititalized " << print_move(move) << " with " 
+                << num_children << " children";
+        log(message.str());
+    }
+}
+
+void Logger::log_selected_child(const std::array<int, 4>& move, double puct_score) {
+    if (should_log(LogLevel::SELECTION_ONLY)) {
+        std::ostringstream message;
+        message << "  Selected: " << print_move(move) << " | PUCT=";
+        if (puct_score == std::numeric_limits<double>::max()) {
+            message << "inf";
+        } else {
+            message << std::fixed << std::setprecision(4) << puct_score;
+        }
+        log(message.str());
+    }
+}
+
+void Logger::log_puct_details(const std::array<int, 4>& move, float q_value, 
+                              float u_value, float prior, int visits, int parent_visits) 
+{
+    // Clamp NaN values
+    if (std::isnan(q_value)) q_value = 0.0f;
+    if (std::isnan(u_value)) u_value = 0.0f;
+
+    if (should_log(LogLevel::EVERYTHING)) {
+        std::ostringstream message;
+        message << "    " << print_move(move) << ": Q=" << std::fixed << std::setprecision(2) << q_value
+                << ", U=" << std::setprecision(2) << u_value
+                << ", P=" << std::setprecision(2) << prior
+                << ", N=" << visits << "/" << parent_visits;
+        log(message.str());
+    }
+}
+
+void Logger::log_simulation_start(const std::array<int, 4>& move, const Board& board) {
+    if (should_log(LogLevel::EVERYTHING)) {
+        std::ostringstream message;
+        std::ostringstream board_string;
+        board.display_board(board_string);
+        message << "\n  Random playout from " << print_move(move) 
+                << ":\n" << board_string.str();
+        log(message.str());
+    }
 }
 
 void Logger::log_simulation_step(Cell_state current_player, const Board& board,
                                  const std::array<int, 4>& move) {
-  if (is_verbose) {
-    std::ostringstream message;
-    std::ostringstream board_string;
-    board.display_board(board_string);
-    message << "Current player in simulation is " << current_player
-            << " in Board state:\n"
-            << board_string.str();
-    message << current_player << " makes random move " << print_move(move) << ". ";
-    log(message.str());
-  }
+    if (should_log(LogLevel::EVERYTHING)) {
+        std::ostringstream message;
+        message << "    " << current_player << " plays " << print_move(move);
+        log(message.str());
+    }
 }
 
 void Logger::log_simulation_end(float value) {
-  if (is_verbose) {
-    std::ostringstream message;
-    std::ostringstream board_string;
-    message << "SUMULATION FROM NN WIN returns " << std::fixed << std::setprecision(2) << value;
-    log(message.str());
-  }
+    if (should_log(LogLevel::EVERYTHING)) {
+        std::ostringstream message;
+        message << "  Playout result: " << std::fixed << std::setprecision(2) << value;
+        log(message.str());
+    }
+}
+
+void Logger::log_backpropagation_start(const std::array<int, 4>& move, float value) {
+    if (should_log(LogLevel::BACKPROP_ONLY)) {
+        std::ostringstream message;
+        message << "  Backprop value=" << std::fixed << std::setprecision(2) 
+                << value << " from " << print_move(move);
+        log(message.str());
+    }
 }
 
 void Logger::log_backpropagation_result(const std::array<int, 4>& move,
-                                        float value, int visit_count) {
-  std::ostringstream message;
-  message << "BACKPROPAGATED result to [" << print_move(move)  
-          << "]. It currently has a value of " << std::fixed << std::setprecision(2) << value << " and "
-          << visit_count << " visits.";
-  log(message.str());
+                                       float acc_value, int visit_count) {
+    if (should_log(LogLevel::BACKPROP_ONLY)) {
+        std::ostringstream message;
+        message << "    " << print_move(move) << ": Visits=" << visit_count
+                << ",| Acc Value=" << std::fixed << std::setprecision(2) << acc_value
+                << ",| Mean Value=" << std::setprecision(2) << acc_value/visit_count;
+        log(message.str());
+    }
 }
 
-void Logger::log_root_stats(int visit_count, int win_count,
-                            size_t child_nodes) {
-  std::ostringstream message;
-  message << "\nAFTER BACKPROPAGATION, root node has " << visit_count
-          << " visits, "  << " and " << child_nodes
-          << " child nodes. Their details are:\n";
-  log(message.str());
+void Logger::log_root_stats(int visit_count, size_t child_nodes) {
+    if (should_log(LogLevel::ROOT_STATS)) {
+        std::ostringstream message;
+        message << "\n--- ROOT STATISTICS ---\n"
+                << "Total visits: " << visit_count
+                << " | Children: " << child_nodes << "\n";
+        log(message.str());
+    }
 }
 
 void Logger::log_child_node_stats(const std::array<int, 4>& move,
-                                  float value, int visit_count) {
-  std::ostringstream message;
-  message << "Child node " << print_move(move)
-          << ": Value: " << std::fixed << std::setprecision(2) << value << ", Visits: " << visit_count
-          << ". Win ratio: ";
-
-  if (visit_count) {
-    message << std::fixed << std::setprecision(2)
-            << static_cast<double>(value) / visit_count;
-  } else {
-    message << "N/A (no visits yet)";
-  }
-  log(message.str());
+                                  float acc_value, int visit_count, 
+                                  float prior_proba) {
+    if (should_log(LogLevel::ROOT_STATS)) {
+        std::ostringstream message;
+        message << "  " << print_move(move)
+                << " | Visits: " << visit_count
+                << " | Prior: " << std::fixed << std::setprecision(2) << prior_proba
+                << " | Mean Value: " << std::setprecision(2) << acc_value/visit_count
+                << " | Acc Value: " << std::setprecision(2) << acc_value;
+        log(message.str());
+    }
 }
 
 void Logger::log_timer_ran_out(int iteration_counter) {
-  std::ostringstream message;
-  message << "\nSIMULATION COMPLETE. " << iteration_counter
-          << " iterations completed. CHOOSING A MOVE FROM ROOT'S CHILDREN:\n";
-  log(message.str());
-}
-
-void Logger::log_node_win_ratio(const std::array<int, 4>& move, int win_count,
-                                int visit_count) {
-  std::ostringstream win_ratio_stream;
-  if (visit_count > 0) {
-    win_ratio_stream << std::fixed << std::setprecision(2)
-                     << static_cast<double>(win_count) / visit_count;
-  } else {
-    win_ratio_stream << "N/A (no visits yet)";
-  }
-
-  std::ostringstream message;
-  message << "Child " << print_move(move)
-          << " has a win ratio of " << win_ratio_stream.str();
-  log(message.str());
+    if (should_log(LogLevel::STEPS_ONLY)) {
+        std::ostringstream message;
+        message << "\n--- Completed " << iteration_counter 
+                << " iterations. Selecting best move ---\n";
+        log(message.str());
+    }
 }
 
 void Logger::log_best_child_chosen(int iteration_counter,
                                    const std::array<int, 4>& move,
-                                   double win_ratio) {
-  std::ostringstream message;
-  message << "\nAfter " << iteration_counter << " iterations, chose child "
-          << print_move(move) << " with win ratio "
-          << std::setprecision(4) << win_ratio;
-  log(message.str());
+                                   float avg_value, int visits) {
+    if (should_log(LogLevel::STEPS_ONLY)) {
+        std::ostringstream message;
+        message << "\n>>> FINAL CHOICE: " << print_move(move)
+                << " | Visits: " << visits
+                << " | Avg Value: " << std::fixed << std::setprecision(2) << avg_value
+                << " | After " << iteration_counter << " iterations\n";
+        log(message.str());
+    }
 }
 
-void Logger::log_mcts_end() {
-  log("\n--------------------MCTS VERBOSE END--------------------\n");
+void Logger::log_dirichlet_noise_applied(float alpha, float exploration_fraction) {
+    if (should_log(LogLevel::EVERYTHING)) {
+        std::ostringstream message;
+        message << "  Applied Dirichlet noise: alpha=" << std::fixed 
+                << std::setprecision(2) << alpha
+                << ", exploration_fraction=" << std::setprecision(2) 
+                << exploration_fraction;
+        log(message.str());
+    }
 }
 
 std::string Logger::print_move(std::array<int, 4> move) {
+    char column = 'A' + move[1];  
+    int row = move[0] + 1; 
 
-        // Print the row as a number and the column as an alphabet
-        char column = 'a' + move[1];  
-        int row = move[0] + 1; 
+    std::string direction;
+    switch (move[2]) {
+        case 1: direction = "↙"; break;
+        case 2: direction = "↓"; break;
+        case 3: direction = "↘"; break;
+        case 4: direction = "←"; break;
+        case 5: direction = "•"; break;
+        case 6: direction = "→"; break;
+        case 7: direction = "↖"; break;
+        case 8: direction = "↑"; break;
+        case 9: direction = "↗"; break;
+        default: direction = "?"; break;
+    }
 
-        // Determine direction based on the dir value
-        std::string direction;
-        switch (move[2]) {
-        case 1: direction = "Move downleft "; break;
-        case 2: direction = "Move down"; break;
-        case 3: direction = "Move downright"; break;
-        case 4: direction = "Move left"; break;
-        case 5: direction = "Stay"; break;
-        case 6: direction = "Move right"; break;
-        case 7: direction = "Moveupleft"; break;
-        case 8: direction = "Move up"; break;
-        case 9: direction = "Move upright"; break;
-        default: direction = "unknown"; break;
-        }
+    std::string move_type;
+    switch (move[3]) {
+        case 1: move_type = "W"; break;
+        case 2: move_type = "A"; break;
+        default: move_type = ""; break;
+    }
 
-        // Determine move type
-        std::string move_type;
-        switch (move[3]) {
-        case -1: move_type = ""; break;
-        case 0: move_type = ""; break;
-        case 1: move_type = "and take backward"; break;
-        case 2: move_type = "and take forward"; break;
-        default: move_type = "unknown"; break;
-        }
+    std::ostringstream oss;
+    oss << "(" << row << column << direction;
+    if (!move_type.empty()) {
+        oss << move_type ;
+    }
+    oss << ")"; 
 
-        std::string message = "("+ std::to_string(row) + ", " + column +") "
-            + direction + " " + move_type;
-
-        return message;
+    return oss.str();
 }
