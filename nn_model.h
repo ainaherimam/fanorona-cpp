@@ -6,65 +6,69 @@
 #include <vector>
 #include <string>
 #include <random>
+#include "cell_state.h"
 
-// =============================================================
-// ===================== GameDataset ============================
-// =============================================================
+
+/**
+ * @brief Circular buffer dataset for storing game training data
+ * 
+ * Stores board states, policy targets, value targets, and legal move masks
+ * using a circular buffer strategy for efficient memory usage during training.
+ */
 struct GameDataset : torch::data::datasets::Dataset<GameDataset> {
     size_t max_size;
     size_t next_index = 0;
     size_t current_size = 0;   
     std::vector<torch::Tensor> boards, pi_targets, z_targets, legal_mask;
 
-    GameDataset(size_t max_size_) : max_size(max_size_) {
-        boards.resize(max_size);
-        pi_targets.resize(max_size);
-        z_targets.resize(max_size);
-        legal_mask.resize(max_size);
-    }
+    /**
+     * @brief Create a GameDataset with specified maximum size
+     * 
+     * @param max_size_ Maximum number of positions to store
+     */
+    GameDataset(size_t max_size_);
 
-    void add_position(torch::Tensor board, torch::Tensor pi, torch::Tensor z, torch::Tensor mask) {
-        boards[next_index] = board;
-        pi_targets[next_index] = pi;
-        z_targets[next_index] = z;
-        legal_mask[next_index] = mask;
+    /**
+     * @brief Adds a new training position to the dataset
+     * 
+     * @param board Board state representation
+     * @param pi Policy target distribution
+     * @param z Value target
+     * @param mask Legal move mask
+     */
+    void add_position(torch::Tensor board, torch::Tensor pi, torch::Tensor z, torch::Tensor mask);
 
-        next_index = (next_index + 1) % max_size;  // Circular buffer
-        if (current_size < max_size)
-            current_size++;
-    }
+    /**
+     * @brief Gets a random training example from the dataset
+     * 
+     * @return Training example containing board state and concatenated targets
+     */
+    torch::data::Example<> get(size_t index) override;
 
-    torch::data::Example<> get(size_t) override {
-        std::uniform_int_distribution<size_t> dist(0, max_size - 1);
-        static std::mt19937 rng(std::random_device{}());
-        size_t idx = dist(rng);
-        return {boards[idx], torch::cat({pi_targets[idx], z_targets[idx].unsqueeze(0), legal_mask[idx]})};
-    }
+    /**
+     * @brief Returns the current size of the dataset
+     * 
+     * @return Optional size value
+     */
+    torch::optional<size_t> size() const override;
 
-    torch::optional<size_t> size() const override { return max_size; }
-
-    void update_last_z(const std::vector<torch::Tensor>& new_z_values, Cell_state winner) {
-    size_t count = new_z_values.size();
-
-    // Compute z values for X and O based on winner
-    float z_val_x = (winner == Cell_state::X) ? 1.0f : (winner == Cell_state::O ? -1.0f : 0.0f);
-    float z_val_o = (winner == Cell_state::O) ? 1.0f : (winner == Cell_state::X ? -1.0f : 0.0f);
-
-    for (size_t i = 0; i < count; ++i) {
-        size_t idx = (next_index + max_size - count + i) % max_size;
-
-        float old_val = z_targets[idx].item<float>();
-        float updated_val = (old_val == 0.0f) ? z_val_x : z_val_o;
-        z_targets[idx] =  torch::tensor(updated_val, torch::dtype(torch::kFloat32));
-    }
-}
-
+    /**
+     * @brief Updates the value targets for the most recent game positions
+     * 
+     * @param new_z_values Vector of new value targets
+     * @param winner Game outcome (X, O, or draw)
+     */
+    void update_last_z(const std::vector<torch::Tensor>& new_z_values, Cell_state winner);
 };
 
 
-// =============================================================
-// ===================== AlphaZeroNetWithMask ===================
-// =============================================================
+
+/**
+ * @brief Neural network architecture for AlphaZero with legal move masking
+ * 
+ * Implements a residual convolutional neural network with separate policy
+ * and value heads for game state evaluation and move prediction.
+ */
 struct AlphaZeroNetWithMaskImpl : torch::nn::Module {
     torch::nn::Conv2d conv_in{nullptr};
     torch::nn::ModuleList res_blocks{nullptr};
@@ -75,138 +79,81 @@ struct AlphaZeroNetWithMaskImpl : torch::nn::Module {
 
     int H, W;
 
-    AlphaZeroNetWithMaskImpl(int C=11, int H_=5, int W_=9, int num_moves=1800, int channels=64, int n_blocks=6) 
-        : H(H_), W(W_) {
+    /**
+     * @brief Constructs the AlphaZero neural network
+     * 
+     * @param C Number of input channels
+     * @param H_ Board height
+     * @param W_ Board width
+     * @param num_moves Total number of possible moves
+     * @param channels Number of convolutional filters
+     * @param n_blocks Number of residual blocks
+     */
+    AlphaZeroNetWithMaskImpl(int C = 11, int H_ = 5, int W_ = 9, 
+                             int num_moves = 1800, int channels = 64, int n_blocks = 6);
 
-        conv_in = register_module("conv_in", 
-            torch::nn::Conv2d(torch::nn::Conv2dOptions(C, channels, 3).padding(1)));
+    /**
+     * @brief Forward pass through the network
+     * 
+     * @param x Input board state tensor
+     * @param legal_mask Optional mask for legal moves
+     * 
+     * @return Pair of policy log-probabilities and value prediction
+     */
+    std::pair<torch::Tensor, torch::Tensor> forward(torch::Tensor x, 
+                                                     torch::Tensor legal_mask = torch::Tensor());
 
-        // Use ModuleList for proper registration
-        res_blocks = register_module("res_blocks", torch::nn::ModuleList());
-        
-        for (int i = 0; i < n_blocks; ++i) {
-            auto block = torch::nn::Sequential(
-                torch::nn::Conv2d(torch::nn::Conv2dOptions(channels, channels, 3).padding(1)),
-                torch::nn::BatchNorm2d(channels),
-                torch::nn::ReLU(),
-                torch::nn::Conv2d(torch::nn::Conv2dOptions(channels, channels, 3).padding(1)),
-                torch::nn::BatchNorm2d(channels)
-            );
-            res_blocks->push_back(block);
-        }
+    /**
+     * @brief Saves the model to disk
+     * 
+     * @param path File path where model will be saved
+     */
+    void save_model(const std::string& path);
 
-        policy_head_conv = register_module("policy_head_conv", 
-            torch::nn::Conv2d(torch::nn::Conv2dOptions(channels, 2, 1)));
-        policy_fc = register_module("policy_fc", 
-            torch::nn::Linear(2 * H * W, num_moves));
-
-        value_head_conv = register_module("value_head_conv", 
-            torch::nn::Conv2d(torch::nn::Conv2dOptions(channels, 1, 1)));
-        value_fc1 = register_module("value_fc1", 
-            torch::nn::Linear(H * W, 64));
-        value_fc2 = register_module("value_fc2", 
-            torch::nn::Linear(64, 1));
-    }
-
-    std::pair<torch::Tensor, torch::Tensor> forward(torch::Tensor x, torch::Tensor legal_mask = torch::Tensor()) {
-        x = torch::relu(conv_in->forward(x));
-        
-        // Update loop to work with ModuleList
-        for (size_t i = 0; i < res_blocks->size(); ++i) {
-            auto residual = x.clone();
-            x = res_blocks[i]->as<torch::nn::Sequential>()->forward(x);
-            x = torch::relu(x + residual);
-        }
-
-        // --- Policy Head ---
-        auto p = policy_head_conv->forward(x).view({x.size(0), -1});
-        p = policy_fc->forward(p);
-        if (legal_mask.defined()) {
-            p = p.masked_fill(legal_mask == 0, -1e9);
-        }
-        p = torch::log_softmax(p, 1);
-
-        // --- Value Head ---
-        auto v = value_head_conv->forward(x).view({x.size(0), -1});
-        v = torch::relu(value_fc1->forward(v));
-        v = torch::tanh(value_fc2->forward(v)).squeeze(-1);
-
-        return {p, v};
-    }
-
-    void save_model(const std::string& path) {
-        try {
-            torch::save(shared_from_this(), path);
-            std::cout << "✅ Model saved to: " << path << std::endl;
-        } catch (const c10::Error& e) {
-            std::cerr << "❌ Error saving model: " << e.msg() << std::endl;
-        }
-    }
-
-    static torch::nn::ModuleHolder<AlphaZeroNetWithMaskImpl> load_model(const std::string& path) {
-        try {
-            auto model = std::make_shared<AlphaZeroNetWithMaskImpl>(
-                11, 5, 9, 1800, 64, 6
-            );
-            torch::load(model, path);
-            return model;
-        } catch (const c10::Error& e) {
-            std::cerr << "❌ Error loading model: " << e.msg() << std::endl;
-            throw;
-        }
-    }
+    /**
+     * @brief Loads a model from disk
+     * 
+     * @param path File path from which to load the model
+     * 
+     * @return Loaded model holder
+     */
+    static torch::nn::ModuleHolder<AlphaZeroNetWithMaskImpl> load_model(const std::string& path);
 };
+
 TORCH_MODULE(AlphaZeroNetWithMask);
 
-// =============================================================
-// ===================== Loss Function ==========================
-// =============================================================
-inline torch::Tensor alphazero_loss(torch::Tensor policy_pred, torch::Tensor value_pred,
-                                   torch::Tensor pi_target, torch::Tensor z_target){
 
-    auto policy_loss = -(pi_target * policy_pred).sum(1).mean();
-    auto value_loss = torch::mse_loss(value_pred, z_target);
+/**
+ * @brief Computes the AlphaZero combined loss function
+ * 
+ * Combines cross-entropy loss for policy and mean squared error for value.
+ * 
+ * @param policy_pred Predicted policy log-probabilities
+ * @param value_pred Predicted value
+ * @param pi_target Target policy distribution
+ * @param z_target Target value
+ * 
+ * @return Combined loss tensor
+ */
+torch::Tensor alphazero_loss(torch::Tensor policy_pred, torch::Tensor value_pred,
+                             torch::Tensor pi_target, torch::Tensor z_target);
 
-    //MAYBE L2 REGULARIZATION HERE!!!
-    return policy_loss + value_loss;
-
-}
 
 // =============================================================
 // ===================== Training Function ======================
 // =============================================================
-inline void train(AlphaZeroNetWithMask &model, GameDataset &dataset, int batch_size=32, int epochs=5,
-                  double lr=1e-3, torch::Device device=torch::kCUDA) {
 
-    model->to(device);
-    auto dataloader = torch::data::make_data_loader(dataset.map(torch::data::transforms::Stack<>()), batch_size);
-    torch::optim::Adam optimizer(model->parameters(), lr);
-    model->train();
-
-    for (int epoch = 1; epoch <= epochs; ++epoch) {
-        double total_loss = 0.0;
-        size_t batch_idx = 0;
-
-        for (auto &batch : *dataloader) {
-            auto b = batch.data.to(device);
-            auto t = batch.target.to(device);
-
-            auto pi_target = t.slice(1, 0, 1800);
-            auto z_target = t.slice(1, 1800, 1801).squeeze(1);
-            auto mask = t.slice(1, 1801, t.size(1));
-
-            optimizer.zero_grad();
-            auto [p, v] = model->forward(b, mask);
-            auto loss = alphazero_loss(p, v, pi_target, z_target);
-            loss.backward();
-            optimizer.step();
-
-            total_loss += loss.item<double>();
-            batch_idx++;
-        }
-
-        std::cout << "Epoch " << epoch << "/" << epochs << " - Loss: " << total_loss / batch_idx << std::endl;
-    }
-}
+/**
+ * @brief Trains the AlphaZero model on the provided dataset
+ * 
+ * @param model Neural network model to train
+ * @param dataset Training dataset containing game positions
+ * @param batch_size Number of samples per batch
+ * @param epochs Number of training epochs
+ * @param lr Learning rate for Adam optimizer
+ * @param device Device to train on (CPU or CUDA)
+ */
+void train(AlphaZeroNetWithMask& model, GameDataset& dataset, int batch_size = 32, 
+           int epochs = 5, double lr = 1e-3, torch::Device device = torch::kCUDA);
 
 #endif // ALPHAZERO_MODEL_H

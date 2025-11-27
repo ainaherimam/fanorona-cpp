@@ -1,6 +1,9 @@
+## ▶️ Run the project on colab via this [Link](https://colab.research.google.com/drive/1JO8eqtxZQfcTK0KhBFiy-G2EYGEl9rKc?usp=sharing)
+
+
 # Fanorona on C++20 with MCTS
 
- A project that implements the Monte Carlo Tree Search (MCTS) algorithm for the traditional board game of [Fanorona] on C++20(https://en.wikipedia.org/wiki/Fanorona).
+ A project that implements the Monte Carlo Tree Search (MCTS) algorithm for the traditional board game of [Fanorona](https://en.wikipedia.org/wiki/Fanorona) on C++20.
 
  ![img1](./images/fanorona.png)
 
@@ -11,7 +14,6 @@
 Fanorona is a centuries-old strategy board game originating from Madagascar. It is played on a 9x5 grid (fanorona 9) or a 5x5 grid (fanorona 5)  and challenges players to capture their opponent's pieces using a variety of strategic moves. The game is renowned for its depth and complexity, making it an excellent candidate for AI research.
 
 ---
-
 ## 🎯 Project
 - Implement a simple interface for the Fanorona game 
 - Implement the **Monte Carlo Tree Search (MCTS)** algorithm to play Fanorona.
@@ -47,9 +49,8 @@ make -j$(nproc)
 ```
 
 ## 🛠️ To do
--  Outer loop of Self-play
-
-
+- Outer loop of Self-play
+- Parallelization of MCTS
 
 
 ## 🌟 Acknowledgments

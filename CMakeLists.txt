@@ -25,6 +25,7 @@ set(SOURCES
     player.cpp
     mcts_agent.cpp
     logger.cpp
+    nn_model.cpp
 )
 
 # ============================================================

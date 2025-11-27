@@ -307,20 +307,6 @@ void Board::take(int move_x, int move_y, int dir, int tar, Cell_state player) {
         tar_col += mult * offset_y[dir];
     }
 }
-
-torch::Tensor Board::valid_moves_map(Cell_state player) const {
-    torch::Tensor moves_map = torch::zeros({9, 5}, torch::kFloat32);
-    auto valid_moves = get_valid_moves(player);
-
-    for (const auto& move : valid_moves) {
-        int x = move[0];
-        int y = move[1];
-        if (x >= 0 && x < 9 && y >= 0 && y < 5)
-            moves_map[x][y] = 1.0f;
-    }
-    return moves_map;
-}
-
 torch::Tensor Board::to_tensor(Cell_state player) const {
 
     torch::Tensor stacked = torch::zeros({11, 5, 9}, torch::kFloat32);
